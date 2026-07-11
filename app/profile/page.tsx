@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import PosterCard from "@/components/PosterCard";
+import { ListCard, CreateListCard } from "@/components/ListCard";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import Avatar from "@/components/ui/Avatar";
 import Pill from "@/components/ui/Pill";
 import { useLibrary } from "@/lib/useLibrary";
+import { useLists } from "@/lib/useLists";
 import { createClient } from "@/lib/supabase/client";
 import type { LibraryItem, LibraryStatus } from "@/lib/types";
 
@@ -31,9 +35,12 @@ export default function ProfilePage() {
   const router = useRouter();
   const tv = useLibrary("tv");
   const movie = useLibrary("movie");
+  const lists = useLists();
   const [email, setEmail] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<LibraryStatus | "all">("all");
   const [movieFilter, setMovieFilter] = useState<LibraryStatus | "all">("all");
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [newListName, setNewListName] = useState("");
   const supabase = createClient();
 
   useEffect(() => {
@@ -88,10 +95,18 @@ export default function ProfilePage() {
     window.location.href = "/login";
   }
 
+  async function handleCreateList(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newListName.trim()) return;
+    await lists.createList(newListName.trim());
+    setNewListName("");
+    setShowCreateList(false);
+  }
+
   const loading = tv.loading || movie.loading;
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Avatar label={email ?? undefined} size="lg" />
@@ -105,43 +120,58 @@ export default function ProfilePage() {
         </Button>
       </header>
 
-      {/* Hero: the watch-time clock, the signature glow ring at large scale */}
-      <Card padding="lg" className="flex flex-col items-center gap-6 rounded-lg py-10">
-        <ProgressRing progress={ringProgress} size={180} strokeWidth={10}>
-          <div className="flex flex-col items-center">
-            <span className="font-mono text-stat-lg text-ink">{totalHours}</span>
-            <span className="text-caption text-muted">hours watched</span>
-          </div>
-        </ProgressRing>
-        <p className="font-body text-body-sm text-muted">
-          That&apos;s about <span className="text-primary">{totalDays} days</span> of your life
-        </p>
-      </Card>
-
-      <section className="grid grid-cols-2 gap-4">
-        <StatCard
-          label="TV Time"
-          value={`${Math.floor(tvMinutes / 60)}h`}
-          detail={`${tv.watched.length} episodes · ${tv.items.length} shows`}
-          color="primary"
-        />
-        <StatCard
-          label="Movie Time"
-          value={`${Math.floor(movieMinutes / 60)}h`}
-          detail={`${movie.watched.length} watched · ${movie.items.length} tracked`}
-          color="secondary"
-        />
+      {/* Stats: a horizontal-scrolling carousel so it stays out of the way
+          and Lists/Shows/Movies are visible as soon as you land on Profile. */}
+      <section>
+        <h2 className="mb-3 font-display text-display-md text-ink">Stats</h2>
+        <div
+          className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2
+            scrollbar-thin sm:-mx-8 sm:px-8"
+        >
+          <Card padding="sm" className="flex w-40 shrink-0 snap-start flex-col items-center gap-2 rounded-lg text-center">
+            <ProgressRing progress={ringProgress} size={72} strokeWidth={6}>
+              <span className="font-mono text-stat-md text-ink">{totalHours}</span>
+            </ProgressRing>
+            <div>
+              <p className="text-body-sm text-ink">Hours watched</p>
+              <p className="text-caption text-muted">{totalDays} days</p>
+            </div>
+          </Card>
+          <CarouselStat label="TV time" value={`${Math.floor(tvMinutes / 60)}h`} detail={`${tv.watched.length} episodes`} color="primary" />
+          <CarouselStat label="Movie time" value={`${Math.floor(movieMinutes / 60)}h`} detail={`${movie.watched.length} watched`} color="secondary" />
+          <CarouselStat label="Shows tracked" value={String(tv.items.length)} />
+          <CarouselStat label="Movies tracked" value={String(movie.items.length)} />
+          <CarouselStat label="Episodes watched" value={String(tv.watched.length)} />
+          <CarouselStat label="Movies watched" value={String(movie.watched.length)} />
+        </div>
       </section>
 
       <section>
-        <h2 className="mb-3 font-display text-display-md text-ink">Library totals</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MiniStat label="Shows tracked" value={tv.items.length} />
-          <MiniStat label="Movies tracked" value={movie.items.length} />
-          <MiniStat label="Episodes watched" value={tv.watched.length} />
-          <MiniStat label="Movies watched" value={movie.watched.length} />
+        <h2 className="mb-3 font-display text-display-md text-ink">Lists</h2>
+        <div
+          className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2
+            scrollbar-thin sm:-mx-8 sm:px-8"
+        >
+          <CreateListCard onClick={() => setShowCreateList(true)} />
+          {lists.lists.map((l) => (
+            <ListCard key={l.id} id={l.id} name={l.name} items={lists.itemsFor(l.id)} />
+          ))}
         </div>
       </section>
+
+      <Modal open={showCreateList} onClose={() => setShowCreateList(false)} title="New list">
+        <form onSubmit={handleCreateList} className="flex flex-col gap-4">
+          <Input
+            autoFocus
+            value={newListName}
+            onChange={(e) => setNewListName(e.target.value)}
+            placeholder="e.g. Cozy Weekend Watches"
+          />
+          <Button type="submit" className="w-full">
+            Create list
+          </Button>
+        </form>
+      </Modal>
 
       {loading ? (
         <p className="text-muted">Loading your library…</p>
@@ -201,6 +231,32 @@ export default function ProfilePage() {
         </>
       )}
     </div>
+  );
+}
+
+function CarouselStat({
+  label,
+  value,
+  detail,
+  color,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  color?: "primary" | "secondary";
+}) {
+  return (
+    <Card padding="sm" className="flex w-36 shrink-0 snap-start flex-col justify-center gap-1 rounded-lg">
+      <p className="text-caption text-muted">{label}</p>
+      <p
+        className={`font-mono text-stat-md ${
+          color === "primary" ? "text-primary" : color === "secondary" ? "text-secondary" : "text-ink"
+        }`}
+      >
+        {value}
+      </p>
+      {detail && <p className="text-body-sm text-muted">{detail}</p>}
+    </Card>
   );
 }
 
@@ -273,36 +329,5 @@ function PosterSection({
         </div>
       )}
     </section>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  detail,
-  color,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  color: "primary" | "secondary";
-}) {
-  return (
-    <Card>
-      <p className="text-caption text-muted">{label}</p>
-      <p className={`mt-1 font-mono text-stat-md ${color === "primary" ? "text-primary" : "text-secondary"}`}>
-        {value}
-      </p>
-      <p className="mt-1 text-body-sm text-muted">{detail}</p>
-    </Card>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <Card padding="sm" className="text-center">
-      <p className="font-mono text-stat-md text-ink">{value}</p>
-      <p className="mt-1 text-body-sm text-muted">{label}</p>
-    </Card>
   );
 }

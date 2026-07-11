@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { Compass, CircleUserRound, Sparkles } from "lucide-react";
 
 const TABS = [
-  { href: "/profile", label: "Profile", icon: CircleUserRound },
   { href: "/discover", label: "Discover", icon: Compass },
+  { href: "/profile", label: "Profile", icon: CircleUserRound },
 ];
 
 export default function NavBar() {

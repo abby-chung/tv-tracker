@@ -38,4 +38,24 @@ export interface WatchedEpisode {
   watched_at: string;
 }
 
+// A custom, user-created list (e.g. "Cozy Weekend Watches").
+export interface ListRow {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+}
+
+// A single title added to one of the user's custom lists.
+export interface ListItemRow {
+  id: string;
+  list_id: string;
+  user_id: string;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  poster_path: string | null;
+  added_at: string;
+}
+
 export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342";

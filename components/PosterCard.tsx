@@ -33,97 +33,77 @@ export default function PosterCard({
 
   return (
     <div className="group flex w-full flex-col gap-2 rounded-md text-left">
-      <button
-        onClick={onClick}
-        disabled={!onClick}
-        className="focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface2
-          shadow-card transition-shadow duration-300 group-hover:shadow-glow-primary"
-      >
-        {posterPath ? (
-          <Image
-            src={`${TMDB_IMAGE_BASE}${posterPath}`}
-            alt={title}
-            fill
-            sizes="(max-width: 768px) 33vw, 160px"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-muted">
-            <Clapperboard className="h-9 w-9" strokeWidth={1.5} />
-          </div>
-        )}
+      <div className="relative aspect-[2/3] w-full">
+        <button
+          onClick={onClick}
+          disabled={!onClick}
+          className="focus-ring relative h-full w-full overflow-hidden rounded-md bg-surface2
+            shadow-card transition-shadow duration-300 group-hover:shadow-glow-primary"
+        >
+          {posterPath ? (
+            <Image
+              src={`${TMDB_IMAGE_BASE}${posterPath}`}
+              alt={title}
+              fill
+              sizes="(max-width: 768px) 33vw, 160px"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-muted">
+              <Clapperboard className="h-9 w-9" strokeWidth={1.5} />
+            </div>
+          )}
 
-        {typeof progress === "number" && (
-          <div className="absolute bottom-2 right-2">
-            <ProgressRing progress={progress} size={34} strokeWidth={4} color={ringColor} />
-          </div>
-        )}
+          {typeof progress === "number" && (
+            <div className="absolute bottom-2 right-2">
+              <ProgressRing progress={progress} size={34} strokeWidth={4} color={ringColor} />
+            </div>
+          )}
+        </button>
 
         {onToggleFavorite && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                onToggleFavorite();
-              }
-            }}
-            className="absolute left-2 top-2"
-          >
+          <div className="absolute left-2 top-2 z-10">
             <IconButton
               icon={Heart}
               label={favorite ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
               tone="danger"
               filled={favorite}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite();
+              }}
             />
           </div>
         )}
 
         {onAdd && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
+          <div className="absolute right-2 top-2 z-10">
+            <IconButton
+              icon={Plus}
+              label={`Add ${title} to your library`}
+              tone="primary"
+              onClick={(e) => {
                 e.stopPropagation();
                 onAdd();
-              }
-            }}
-            className="absolute right-2 top-2"
-          >
-            <IconButton icon={Plus} label={`Add ${title} to your library`} tone="primary" />
+              }}
+            />
           </div>
         )}
 
         {onRemove && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
+          <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+            <IconButton
+              icon={X}
+              label={`Remove ${title} from your library`}
+              tone="danger"
+              onClick={(e) => {
                 e.stopPropagation();
                 onRemove();
-              }
-            }}
-            className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <IconButton icon={X} label={`Remove ${title} from your library`} tone="danger" />
+              }}
+            />
           </div>
         )}
-      </button>
+      </div>
       <div>
         <p className="line-clamp-1 font-body text-body-md font-medium text-ink">{title}</p>
         {subtitle && <p className="line-clamp-1 text-body-sm capitalize text-muted">{subtitle}</p>}

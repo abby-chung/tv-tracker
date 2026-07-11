@@ -27,15 +27,22 @@ interface Episode {
   air_date: string | null;
 }
 
+interface Genre {
+  id: number;
+  name: string;
+}
+
 interface Details {
   id: number;
   name?: string;
   title?: string;
   overview: string;
   poster_path: string | null;
-  runtime?: number; // movies
+  runtime?: number; // movies, minutes
   episode_run_time?: number[]; // shows, legacy field
   seasons?: Season[];
+  number_of_seasons?: number; // shows
+  genres?: Genre[];
   first_air_date?: string;
   release_date?: string;
   vote_average?: number;
@@ -48,6 +55,15 @@ const STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
   { key: "watching", label: "Watching" },
   { key: "watched", label: "Watched" },
 ];
+
+// Turns 148 into "2h 28m" (or "45m" / "3h" when one side is zero).
+function formatRuntime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
 
 export default function TitleDetailPage() {
   const params = useParams<{ type: string; id: string }>();
@@ -208,6 +224,20 @@ export default function TitleDetailPage() {
   const title = details.title ?? details.name ?? "Untitled";
   const year = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
 
+  // Genres and length/season-count, shown alongside the rating.
+  const genreText = details.genres && details.genres.length > 0
+    ? details.genres.map((g) => g.name).join(", ")
+    : undefined;
+  const lengthText =
+    mediaType === "movie"
+      ? details.runtime
+        ? formatRuntime(details.runtime)
+        : undefined
+      : details.number_of_seasons
+        ? `${details.number_of_seasons} Season${details.number_of_seasons === 1 ? "" : "s"}`
+        : undefined;
+  const metaLine = [genreText, lengthText].filter(Boolean).join(" · ");
+
   return (
     <div className="flex flex-col gap-6">
       <button
@@ -250,12 +280,19 @@ export default function TitleDetailPage() {
               className="shrink-0"
             />
           </div>
-          {typeof details.vote_average === "number" && (
-            <p className="flex items-center gap-1 text-body-sm text-warning">
-              <Star className="h-4 w-4 fill-warning" strokeWidth={0} />
-              {details.vote_average.toFixed(1)}
-            </p>
+
+          {(typeof details.vote_average === "number" || metaLine) && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
+              {typeof details.vote_average === "number" && (
+                <span className="flex items-center gap-1 text-warning">
+                  <Star className="h-4 w-4 fill-warning" strokeWidth={0} />
+                  {details.vote_average.toFixed(1)}
+                </span>
+              )}
+              {metaLine && <span className="text-muted">{metaLine}</span>}
+            </div>
           )}
+
           <p className="text-body-sm text-muted">{details.overview}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
