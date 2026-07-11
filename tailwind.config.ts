@@ -8,22 +8,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        base: "#0F0F14",
-        surface: "#191922",
-        surface2: "#232430",
-        surface3: "#2E2E3D",
-        ink: "#F5F4F8",
-        muted: "#9494A6",
+        // Strict monochrome surfaces
+        base: "#000000",
+        surface: "#121212",
+        surface2: "#1C1C1C",
+        surface3: "#2A2A2A",
 
-        primary: "#F4C430",
-        primarySoft: "#4A3B12",
-        secondary: "#FF6B8B",
-        secondarySoft: "#3D2230",
+        // Semantic text tokens — the ONLY colors used for typography
+        ink: "#FFFFFF", // Primary text: titles, headers, critical info
+        muted: "#999999", // Secondary text: subtitles, metadata
 
+        // Reserved exclusively for active structural accents:
+        // progress rings/bars and "watched" checkmarks. Never used for text.
+        accent: "#F4C430",
+        accentSoft: "#332B0E",
         success: "#34C759",
-        successSoft: "#123322",
-        warning: "#FFB020",
-        danger: "#FF453A",
+        successSoft: "#0F2A1C",
       },
       fontFamily: {
         display: ["var(--font-display)", "sans-serif"],
@@ -48,9 +48,8 @@ const config: Config = {
         card: "14px", // kept for backwards compatibility with existing usages
       },
       boxShadow: {
-        card: "0 4px 16px rgba(0,0,0,0.35)",
-        "glow-primary": "0 0 24px rgba(244,196,48,0.35)",
-        "glow-secondary": "0 0 24px rgba(255,107,139,0.35)",
+        card: "0 4px 16px rgba(0,0,0,0.5)",
+        glow: "0 0 20px rgba(255,255,255,0.12)",
       },
     },
   },

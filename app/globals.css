@@ -7,13 +7,13 @@
 }
 
 body {
-  background-color: #0F0F14;
-  color: #F5F4F8;
+  background-color: #000000;
+  color: #FFFFFF;
 }
 
 ::selection {
-  background-color: #F4C430;
-  color: #0F0F14;
+  background-color: #FFFFFF;
+  color: #000000;
 }
 
 /* Respect reduced motion preference */
@@ -25,6 +25,8 @@ body {
   }
 }
 
+/* Focus rings use the accent color deliberately — this is an interactive/
+   accessibility affordance, not text typography. */
 .focus-ring:focus-visible {
   outline: 2px solid #F4C430;
   outline-offset: 2px;
@@ -35,6 +37,6 @@ body {
   width: 6px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: #2E2E3D;
+  background-color: #2A2A2A;
   border-radius: 999px;
 }

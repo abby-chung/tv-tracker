@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
-import ProgressRing from "@/components/ProgressRing";
+import Link from "next/link";
+import { LogOut, ChevronRight, Tv, Film, ListVideo, Clapperboard } from "lucide-react";
 import PosterCard from "@/components/PosterCard";
 import { ListCard, CreateListCard } from "@/components/ListCard";
-import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Input from "@/components/ui/Input";
-import Modal from "@/components/ui/Modal";
 import Avatar from "@/components/ui/Avatar";
 import Pill from "@/components/ui/Pill";
+import Card from "@/components/ui/Card";
+import { TimeStatCard, CountStatCard, breakdownTime } from "@/components/StatCards";
 import { useLibrary } from "@/lib/useLibrary";
 import { useLists } from "@/lib/useLists";
 import { createClient } from "@/lib/supabase/client";
@@ -35,12 +34,10 @@ export default function ProfilePage() {
   const router = useRouter();
   const tv = useLibrary("tv");
   const movie = useLibrary("movie");
-  const lists = useLists();
+  const { lists, itemsFor, createList } = useLists();
   const [email, setEmail] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<LibraryStatus | "all">("all");
   const [movieFilter, setMovieFilter] = useState<LibraryStatus | "all">("all");
-  const [showCreateList, setShowCreateList] = useState(false);
-  const [newListName, setNewListName] = useState("");
   const supabase = createClient();
 
   useEffect(() => {
@@ -55,10 +52,6 @@ export default function ProfilePage() {
     () => movie.watched.reduce((sum, w) => sum + (w.runtime_minutes || 0), 0),
     [movie.watched]
   );
-  const totalMinutes = tvMinutes + movieMinutes;
-  const totalHours = Math.floor(totalMinutes / 60);
-  const totalDays = (totalHours / 24).toFixed(1);
-  const ringProgress = (totalHours % 1000) / 1000;
 
   const filteredShows = useMemo(
     () => (showFilter === "all" ? tv.items : tv.items.filter((i) => i.status === showFilter)),
@@ -95,18 +88,16 @@ export default function ProfilePage() {
     window.location.href = "/login";
   }
 
-  async function handleCreateList(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newListName.trim()) return;
-    await lists.createList(newListName.trim());
-    setNewListName("");
-    setShowCreateList(false);
+  async function handleCreateList() {
+    const name = window.prompt("List name:");
+    if (!name?.trim()) return;
+    await createList(name.trim());
   }
 
   const loading = tv.loading || movie.loading;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Avatar label={email ?? undefined} size="lg" />
@@ -120,58 +111,27 @@ export default function ProfilePage() {
         </Button>
       </header>
 
-      {/* Stats: a horizontal-scrolling carousel so it stays out of the way
-          and Lists/Shows/Movies are visible as soon as you land on Profile. */}
+      {/* Stats: clean bordered cards, no donut — matches the reference design.
+          Only the four requested metrics are shown; full breakdown (top
+          genres, per-category totals) lives on /profile/stats. */}
       <section>
-        <h2 className="mb-3 font-display text-display-md text-ink">Stats</h2>
-        <div
-          className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2
-            scrollbar-thin sm:-mx-8 sm:px-8"
-        >
-          <Card padding="sm" className="flex w-40 shrink-0 snap-start flex-col items-center gap-2 rounded-lg text-center">
-            <ProgressRing progress={ringProgress} size={72} strokeWidth={6}>
-              <span className="font-mono text-stat-md text-ink">{totalHours}</span>
-            </ProgressRing>
-            <div>
-              <p className="text-body-sm text-ink">Hours watched</p>
-              <p className="text-caption text-muted">{totalDays} days</p>
-            </div>
-          </Card>
-          <CarouselStat label="TV time" value={`${Math.floor(tvMinutes / 60)}h`} detail={`${tv.watched.length} episodes`} color="primary" />
-          <CarouselStat label="Movie time" value={`${Math.floor(movieMinutes / 60)}h`} detail={`${movie.watched.length} watched`} color="secondary" />
-          <CarouselStat label="Shows tracked" value={String(tv.items.length)} />
-          <CarouselStat label="Movies tracked" value={String(movie.items.length)} />
-          <CarouselStat label="Episodes watched" value={String(tv.watched.length)} />
-          <CarouselStat label="Movies watched" value={String(movie.watched.length)} />
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-display-lg text-ink">Stats</h2>
+          <Link
+            href="/profile/stats"
+            aria-label="See detailed stats"
+            className="focus-ring rounded-full p-1 text-ink hover:text-muted"
+          >
+            <ChevronRight className="h-5 w-5" strokeWidth={2} />
+          </Link>
+        </div>
+        <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-1">
+          <TimeStatCard icon={Tv} label="TV time" {...breakdownTime(tvMinutes)} />
+          <CountStatCard icon={ListVideo} label="Episodes watched" value={tv.watched.length} />
+          <TimeStatCard icon={Clapperboard} label="Movie time" {...breakdownTime(movieMinutes)} />
+          <CountStatCard icon={Film} label="Movies watched" value={movie.watched.length} />
         </div>
       </section>
-
-      <section>
-        <h2 className="mb-3 font-display text-display-md text-ink">Lists</h2>
-        <div
-          className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2
-            scrollbar-thin sm:-mx-8 sm:px-8"
-        >
-          <CreateListCard onClick={() => setShowCreateList(true)} />
-          {lists.lists.map((l) => (
-            <ListCard key={l.id} id={l.id} name={l.name} items={lists.itemsFor(l.id)} />
-          ))}
-        </div>
-      </section>
-
-      <Modal open={showCreateList} onClose={() => setShowCreateList(false)} title="New list">
-        <form onSubmit={handleCreateList} className="flex flex-col gap-4">
-          <Input
-            autoFocus
-            value={newListName}
-            onChange={(e) => setNewListName(e.target.value)}
-            placeholder="e.g. Cozy Weekend Watches"
-          />
-          <Button type="submit" className="w-full">
-            Create list
-          </Button>
-        </form>
-      </Modal>
 
       {loading ? (
         <p className="text-muted">Loading your library…</p>
@@ -184,7 +144,6 @@ export default function ProfilePage() {
             activeFilter={showFilter}
             onFilterChange={setShowFilter}
             items={filteredShows}
-            accent="primary"
             getProgress={(item) => showProgressFor(item.tmdb_id)}
             onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
             onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
@@ -195,7 +154,6 @@ export default function ProfilePage() {
             <PosterSection
               title="Favorite Shows"
               items={favoriteShows}
-              accent="primary"
               getProgress={(item) => showProgressFor(item.tmdb_id)}
               onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
               onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
@@ -210,7 +168,6 @@ export default function ProfilePage() {
             activeFilter={movieFilter}
             onFilterChange={setMovieFilter}
             items={filteredMovies}
-            accent="secondary"
             getProgress={(item) => (isMovieWatched(item.tmdb_id) ? 1 : 0)}
             onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
             onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
@@ -221,42 +178,26 @@ export default function ProfilePage() {
             <PosterSection
               title="Favorite Movies"
               items={favoriteMovies}
-              accent="secondary"
               getProgress={(item) => (isMovieWatched(item.tmdb_id) ? 1 : 0)}
               onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
               onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
               onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
             />
           )}
+
+          {/* Lists */}
+          <section>
+            <h2 className="mb-3 font-display text-display-md text-ink">Lists</h2>
+            <div className="flex gap-4 overflow-x-auto scrollbar-thin pb-2">
+              <CreateListCard onClick={handleCreateList} />
+              {lists.map((list) => (
+                <ListCard key={list.id} id={list.id} name={list.name} items={itemsFor(list.id)} />
+              ))}
+            </div>
+          </section>
         </>
       )}
     </div>
-  );
-}
-
-function CarouselStat({
-  label,
-  value,
-  detail,
-  color,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  color?: "primary" | "secondary";
-}) {
-  return (
-    <Card padding="sm" className="flex w-36 shrink-0 snap-start flex-col justify-center gap-1 rounded-lg">
-      <p className="text-caption text-muted">{label}</p>
-      <p
-        className={`font-mono text-stat-md ${
-          color === "primary" ? "text-primary" : color === "secondary" ? "text-secondary" : "text-ink"
-        }`}
-      >
-        {value}
-      </p>
-      {detail && <p className="text-body-sm text-muted">{detail}</p>}
-    </Card>
   );
 }
 
@@ -267,7 +208,6 @@ function PosterSection({
   activeFilter,
   onFilterChange,
   items,
-  accent,
   getProgress,
   onView,
   onRemove,
@@ -279,7 +219,6 @@ function PosterSection({
   activeFilter?: LibraryStatus | "all";
   onFilterChange?: (key: LibraryStatus | "all") => void;
   items: LibraryItem[];
-  accent: "primary" | "secondary";
   getProgress: (item: LibraryItem) => number;
   onView: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
@@ -295,7 +234,7 @@ function PosterSection({
             <Pill
               key={f.key}
               active={activeFilter === f.key}
-              color={f.key === "watched" ? "success" : accent}
+              color={f.key === "watched" ? "success" : "primary"}
               onClick={() => onFilterChange(f.key)}
             >
               {f.label}
@@ -319,7 +258,6 @@ function PosterSection({
               posterPath={item.poster_path}
               progress={getProgress(item)}
               subtitle={item.status}
-              accent={accent}
               favorite={item.is_favorite}
               onClick={() => onView(item)}
               onRemove={() => onRemove(item)}

@@ -49,6 +49,7 @@ export function useLibrary(mediaType: MediaType) {
     title: string;
     poster_path: string | null;
     status?: LibraryStatus;
+    genre_ids?: number[];
   }) {
     if (DEMO_MODE) return; // preview mode doesn't persist changes
     const { data: userData } = await supabase.auth.getUser();
@@ -62,6 +63,7 @@ export function useLibrary(mediaType: MediaType) {
         title: item.title,
         poster_path: item.poster_path,
         status: item.status ?? "watchlist",
+        genre_ids: item.genre_ids ?? [],
       },
       { onConflict: "user_id,tmdb_id,media_type" }
     );
@@ -172,6 +174,80 @@ export function useLibrary(mediaType: MediaType) {
     await refresh();
   }
 
+  /**
+   * Bulk-mark every episode in a season watched in a single upsert, then
+   * refresh once. Avoids N sequential round-trips from the per-episode path.
+   */
+  async function markSeasonWatched(
+    tmdbId: number,
+    seasonNumber: number,
+    episodes: { episode_number: number; runtime_minutes: number }[]
+  ) {
+    if (DEMO_MODE) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    // Optimistic update — add all episode rows to local state immediately
+    const now = new Date().toISOString();
+    const newRows: WatchedEpisode[] = episodes.map((ep) => ({
+      id: `optimistic-${tmdbId}-${seasonNumber}-${ep.episode_number}`,
+      user_id: userData.user!.id,
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      season_number: seasonNumber,
+      episode_number: ep.episode_number,
+      runtime_minutes: ep.runtime_minutes,
+      watched_at: now,
+    }));
+    setWatched((prev) => {
+      // Remove any existing rows for this season first, then add all new ones
+      const filtered = prev.filter(
+        (w) => !(w.tmdb_id === tmdbId && w.season_number === seasonNumber)
+      );
+      return [...filtered, ...newRows];
+    });
+
+    const rows = episodes.map((ep) => ({
+      user_id: userData.user!.id,
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      season_number: seasonNumber,
+      episode_number: ep.episode_number,
+      runtime_minutes: ep.runtime_minutes,
+    }));
+
+    await supabase
+      .from("watched_episodes")
+      .upsert(rows, { onConflict: "user_id,tmdb_id,media_type,season_number,episode_number" });
+
+    await refresh();
+  }
+
+  /**
+   * Bulk-delete every watched record for a season in a single delete, then
+   * refresh once.
+   */
+  async function unmarkSeasonWatched(tmdbId: number, seasonNumber: number) {
+    if (DEMO_MODE) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    // Optimistic update — remove all episode rows for this season immediately
+    setWatched((prev) =>
+      prev.filter((w) => !(w.tmdb_id === tmdbId && w.season_number === seasonNumber))
+    );
+
+    await supabase
+      .from("watched_episodes")
+      .delete()
+      .eq("user_id", userData.user.id)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType)
+      .eq("season_number", seasonNumber);
+
+    await refresh();
+  }
+
   return {
     items,
     watched,
@@ -179,6 +255,8 @@ export function useLibrary(mediaType: MediaType) {
     addToLibrary,
     markEpisodeWatched,
     unmarkEpisodeWatched,
+    markSeasonWatched,
+    unmarkSeasonWatched,
     updateStatus,
     toggleFavorite,
     removeFromLibrary,

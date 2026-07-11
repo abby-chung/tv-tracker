@@ -11,11 +11,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
 }
 
+// Strictly monochrome: "primary" and "secondary" render identically (solid
+// white on black) since color is no longer used to distinguish tv/movie —
+// that distinction now lives in icon/copy only, not hue.
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: "bg-primary text-ink hover:shadow-glow-primary",
-  secondary: "bg-secondary text-ink hover:shadow-glow-secondary",
+  primary: "bg-ink text-base hover:shadow-glow",
+  secondary: "bg-ink text-base hover:shadow-glow",
   ghost: "text-muted hover:text-ink",
-  destructive: "border border-danger/40 text-danger hover:bg-danger/10",
+  destructive: "border border-surface3 text-muted hover:text-ink hover:border-ink",
 };
 
 const SIZE_CLASSES: Record<Size, string> = {

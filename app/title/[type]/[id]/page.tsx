@@ -27,25 +27,19 @@ interface Episode {
   air_date: string | null;
 }
 
-interface Genre {
-  id: number;
-  name: string;
-}
-
 interface Details {
   id: number;
   name?: string;
   title?: string;
   overview: string;
   poster_path: string | null;
-  runtime?: number; // movies, minutes
+  runtime?: number; // movies
   episode_run_time?: number[]; // shows, legacy field
   seasons?: Season[];
-  number_of_seasons?: number; // shows
-  genres?: Genre[];
   first_air_date?: string;
   release_date?: string;
   vote_average?: number;
+  genres?: { id: number; name: string }[];
 }
 
 // "watched" now does double duty: it's both a library status and the
@@ -56,21 +50,11 @@ const STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
   { key: "watched", label: "Watched" },
 ];
 
-// Turns 148 into "2h 28m" (or "45m" / "3h" when one side is zero).
-function formatRuntime(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins}m`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
-}
-
 export default function TitleDetailPage() {
   const params = useParams<{ type: string; id: string }>();
   const router = useRouter();
   const mediaType = params.type === "movie" ? "movie" : "tv";
   const tmdbId = Number(params.id);
-  const accentColor = mediaType === "movie" ? "secondary" : "primary";
 
   const library = useLibrary(mediaType);
   const [details, setDetails] = useState<Details | null>(null);
@@ -98,6 +82,7 @@ export default function TitleDetailPage() {
       title: details.title ?? details.name ?? "Untitled",
       poster_path: details.poster_path,
       status,
+      genre_ids: details.genres?.map((g) => g.id),
     });
   }
 
@@ -181,35 +166,32 @@ export default function TitleDetailPage() {
     }
   }
 
-  // Marks (or unmarks) every episode in a season in one action.
+  // Marks (or unmarks) every episode in a season in one bulk operation.
   async function markAllSeason(season: Season) {
     const eps = await ensureEpisodesLoaded(season.season_number);
-    const allWatched = watchedCountForSeason(season.season_number) >= season.episode_count && eps.length > 0;
+    const allWatched =
+      watchedCountForSeason(season.season_number) >= season.episode_count && eps.length > 0;
+
     if (!isInLibrary) await handleAdd("watching");
 
-    for (const ep of eps) {
-      const watched = isEpisodeWatched(season.season_number, ep.episode_number);
-      if (allWatched && watched) {
-        await library.unmarkEpisodeWatched({
-          tmdb_id: tmdbId,
-          season_number: season.season_number,
-          episode_number: ep.episode_number,
-        });
-      } else if (!allWatched && !watched) {
-        await library.markEpisodeWatched({
-          tmdb_id: tmdbId,
-          season_number: season.season_number,
+    if (allWatched) {
+      await library.unmarkSeasonWatched(tmdbId, season.season_number);
+    } else {
+      await library.markSeasonWatched(
+        tmdbId,
+        season.season_number,
+        eps.map((ep) => ({
           episode_number: ep.episode_number,
           runtime_minutes: ep.runtime ?? 40,
-        });
-      }
+        }))
+      );
     }
   }
 
   if (error) {
     return (
-      <Card className="border border-danger/40 bg-danger/10 py-8 text-center shadow-none">
-        <p className="text-danger">{error}</p>
+      <Card className="border border-surface3 bg-surface2 py-8 text-center shadow-none">
+        <p className="text-ink">{error}</p>
         <p className="mt-2 text-body-sm text-muted">
           Check that TMDB_API_KEY is set correctly, then reload.
         </p>
@@ -223,20 +205,6 @@ export default function TitleDetailPage() {
 
   const title = details.title ?? details.name ?? "Untitled";
   const year = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
-
-  // Genres and length/season-count, shown alongside the rating.
-  const genreText = details.genres && details.genres.length > 0
-    ? details.genres.map((g) => g.name).join(", ")
-    : undefined;
-  const lengthText =
-    mediaType === "movie"
-      ? details.runtime
-        ? formatRuntime(details.runtime)
-        : undefined
-      : details.number_of_seasons
-        ? `${details.number_of_seasons} Season${details.number_of_seasons === 1 ? "" : "s"}`
-        : undefined;
-  const metaLine = [genreText, lengthText].filter(Boolean).join(" · ");
 
   return (
     <div className="flex flex-col gap-6">
@@ -274,25 +242,18 @@ export default function TitleDetailPage() {
               icon={Heart}
               label={libraryItem?.is_favorite ? "Remove from favorites" : "Add to favorites"}
               variant="outline"
-              tone="danger"
+              tone="favorite"
               filled={libraryItem?.is_favorite}
               onClick={handleToggleFavorite}
               className="shrink-0"
             />
           </div>
-
-          {(typeof details.vote_average === "number" || metaLine) && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
-              {typeof details.vote_average === "number" && (
-                <span className="flex items-center gap-1 text-warning">
-                  <Star className="h-4 w-4 fill-warning" strokeWidth={0} />
-                  {details.vote_average.toFixed(1)}
-                </span>
-              )}
-              {metaLine && <span className="text-muted">{metaLine}</span>}
-            </div>
+          {typeof details.vote_average === "number" && (
+            <p className="flex items-center gap-1 text-body-sm text-ink">
+              <Star className="h-4 w-4 fill-ink" strokeWidth={0} />
+              {details.vote_average.toFixed(1)}
+            </p>
           )}
-
           <p className="text-body-sm text-muted">{details.overview}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -302,7 +263,7 @@ export default function TitleDetailPage() {
                   <Pill
                     key={opt.key}
                     active={libraryItem?.status === opt.key}
-                    color={opt.key === "watched" ? "success" : accentColor}
+                    color={opt.key === "watched" ? "success" : "primary"}
                     onClick={() => handleStatusChange(opt.key)}
                   >
                     {opt.label}
@@ -314,7 +275,7 @@ export default function TitleDetailPage() {
               </>
             ) : (
               <Button
-                variant={accentColor}
+                variant="primary"
                 size="sm"
                 icon={Plus}
                 className="rounded-full"

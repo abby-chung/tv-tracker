@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
 
 type Variant = "solid" | "ghost" | "outline" | "filled";
-type Tone = "ink" | "primary" | "danger" | "success";
+type Tone = "ink" | "primary" | "danger" | "success" | "favorite";
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: LucideIcon;
@@ -14,16 +14,18 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const TONE_TEXT: Record<Tone, string> = {
   ink: "text-ink",
-  primary: "text-primary",
-  danger: "text-danger",
+  primary: "text-ink",
+  danger: "text-muted",
   success: "text-success",
+  favorite: "text-red-500",
 };
 
 const FILLED_BG: Record<Tone, string> = {
   ink: "bg-ink text-base",
-  primary: "bg-primary text-base",
-  danger: "bg-danger text-base",
+  primary: "bg-ink text-base",
+  danger: "bg-ink text-base",
   success: "bg-success text-base",
+  favorite: "bg-red-500 text-base",
 };
 
 function variantClasses(variant: Variant, tone: Tone): string {

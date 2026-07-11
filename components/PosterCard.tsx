@@ -9,7 +9,7 @@ interface PosterCardProps {
   posterPath: string | null;
   progress?: number; // 0 to 1, shown as a glow ring overlay if provided
   subtitle?: string;
-  accent?: "primary" | "secondary";
+  accent?: "primary" | "secondary"; // kept for API compatibility; no longer affects color
   favorite?: boolean; // shows a heart toggle overlay if defined (undefined = hidden)
   onClick?: () => void; // view details
   onAdd?: () => void; // shows a "+" button, does not navigate
@@ -22,88 +22,109 @@ export default function PosterCard({
   posterPath,
   progress,
   subtitle,
-  accent = "primary",
   favorite,
   onClick,
   onAdd,
   onRemove,
   onToggleFavorite,
 }: PosterCardProps) {
-  const ringColor = accent === "secondary" ? "#FF6B8B" : "#F4C430";
+  // Single accent color everywhere — hue no longer distinguishes shows vs
+  // movies, per the monochrome design (color is reserved for progress only).
+  const ringColor = "#F4C430";
 
   return (
     <div className="group flex w-full flex-col gap-2 rounded-md text-left">
-      <div className="relative aspect-[2/3] w-full">
-        <button
-          onClick={onClick}
-          disabled={!onClick}
-          className="focus-ring relative h-full w-full overflow-hidden rounded-md bg-surface2
-            shadow-card transition-shadow duration-300 group-hover:shadow-glow-primary"
-        >
-          {posterPath ? (
-            <Image
-              src={`${TMDB_IMAGE_BASE}${posterPath}`}
-              alt={title}
-              fill
-              sizes="(max-width: 768px) 33vw, 160px"
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-muted">
-              <Clapperboard className="h-9 w-9" strokeWidth={1.5} />
-            </div>
-          )}
+      <button
+        onClick={onClick}
+        disabled={!onClick}
+        className="focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface2
+          shadow-card transition-shadow duration-300 group-hover:shadow-glow"
+      >
+        {posterPath ? (
+          <Image
+            src={`${TMDB_IMAGE_BASE}${posterPath}`}
+            alt={title}
+            fill
+            sizes="(max-width: 768px) 33vw, 160px"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted">
+            <Clapperboard className="h-9 w-9" strokeWidth={1.5} />
+          </div>
+        )}
 
-          {typeof progress === "number" && (
-            <div className="absolute bottom-2 right-2">
-              <ProgressRing progress={progress} size={34} strokeWidth={4} color={ringColor} />
-            </div>
-          )}
-        </button>
+        {typeof progress === "number" && (
+          <div className="absolute bottom-2 right-2">
+            <ProgressRing progress={progress} size={34} strokeWidth={4} color={ringColor} />
+          </div>
+        )}
 
         {onToggleFavorite && (
-          <div className="absolute left-2 top-2 z-10">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                onToggleFavorite();
+              }
+            }}
+            className="absolute left-2 top-2"
+          >
             <IconButton
               icon={Heart}
               label={favorite ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
-              tone="danger"
+              tone="favorite"
               filled={favorite}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFavorite();
-              }}
             />
           </div>
         )}
 
         {onAdd && (
-          <div className="absolute right-2 top-2 z-10">
-            <IconButton
-              icon={Plus}
-              label={`Add ${title} to your library`}
-              tone="primary"
-              onClick={(e) => {
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
                 e.stopPropagation();
                 onAdd();
-              }}
-            />
+              }
+            }}
+            className="absolute right-2 top-2"
+          >
+            <IconButton icon={Plus} label={`Add ${title} to your library`} tone="ink" />
           </div>
         )}
 
         {onRemove && (
-          <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
-            <IconButton
-              icon={X}
-              label={`Remove ${title} from your library`}
-              tone="danger"
-              onClick={(e) => {
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
                 e.stopPropagation();
                 onRemove();
-              }}
-            />
+              }
+            }}
+            className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <IconButton icon={X} label={`Remove ${title} from your library`} tone="ink" />
           </div>
         )}
-      </div>
+      </button>
       <div>
         <p className="line-clamp-1 font-body text-body-md font-medium text-ink">{title}</p>
         {subtitle && <p className="line-clamp-1 text-body-sm capitalize text-muted">{subtitle}</p>}

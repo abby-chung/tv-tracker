@@ -9,8 +9,8 @@ interface BadgeProps {
 }
 
 const COLOR_CLASSES: Record<Color, string> = {
-  primary: "bg-primarySoft text-primary",
-  secondary: "bg-secondarySoft text-secondary",
+  primary: "bg-surface2 text-ink",
+  secondary: "bg-surface2 text-ink",
   success: "bg-successSoft text-success",
 };
 

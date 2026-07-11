@@ -8,16 +8,17 @@ interface ProgressRingProps {
 }
 
 /**
- * The app's signature element: a circular arc meter styled like a dim
- * screen glow in a dark room. Used both for per-show progress and for
- * the big watch-time stat on the Profile page.
+ * The app's one deliberate spot of color: a circular arc meter styled like
+ * a dim screen glow in a dark room. This is a "structural accent" (progress
+ * toward completion), so it's exempt from the otherwise-strict monochrome
+ * rule. Used both for per-show progress and the watch-time stat cards.
  */
 export default function ProgressRing({
   progress,
   size = 56,
   strokeWidth = 5,
   color = "#F4C430",
-  trackColor = "#232430",
+  trackColor = "#1C1C1C",
   children,
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;

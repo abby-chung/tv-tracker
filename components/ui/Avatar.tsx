@@ -12,7 +12,7 @@ export default function Avatar({ label, size = "sm" }: AvatarProps) {
   return (
     <div
       className={`flex ${dimension} shrink-0 items-center justify-center rounded-full
-        bg-primarySoft font-display text-primary`}
+        border border-surface3 bg-surface2 font-display text-ink`}
     >
       {initial ?? <CircleUserRound className="h-1/2 w-1/2" strokeWidth={2} />}
     </div>

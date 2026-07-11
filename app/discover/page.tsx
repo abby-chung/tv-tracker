@@ -20,6 +20,12 @@ export default function DiscoverPage() {
   const tvLibrary = useLibrary("tv");
   const movieLibrary = useLibrary("movie");
 
+  function isInLibrary(item: TmdbResult): boolean {
+    const mediaType = item.media_type === "movie" ? "movie" : "tv";
+    const library = mediaType === "movie" ? movieLibrary : tvLibrary;
+    return library.items.some((i) => i.tmdb_id === item.id) || addedIds.has(`${mediaType}-${item.id}`);
+  }
+
   useEffect(() => {
     fetch("/api/tmdb/discover?type=tv&mode=trending")
       .then((r) => r.json())
@@ -63,6 +69,7 @@ export default function DiscoverPage() {
       tmdb_id: item.id,
       title,
       poster_path: item.poster_path,
+      genre_ids: item.genre_ids,
     });
     setAddedIds((prev) => new Set(prev).add(`${mediaType}-${item.id}`));
   }
@@ -91,7 +98,7 @@ export default function DiscoverPage() {
       )}
 
       {error && (
-        <p className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-4 py-3 text-body-sm text-danger">
+        <p className="mb-4 rounded-md border border-surface3 bg-surface2 px-4 py-3 text-body-sm text-ink">
           {error}
         </p>
       )}
@@ -111,9 +118,8 @@ export default function DiscoverPage() {
                 title={item.title ?? item.name ?? "Untitled"}
                 posterPath={item.poster_path}
                 subtitle={mediaType === "movie" ? "Movie" : "Show"}
-                accent={mediaType === "movie" ? "secondary" : "primary"}
                 onClick={() => handleView(item)}
-                onAdd={addedIds.has(key) ? undefined : () => handleAdd(item)}
+                onAdd={isInLibrary(item) ? undefined : () => handleAdd(item)}
               />
             );
           })}

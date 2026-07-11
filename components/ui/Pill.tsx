@@ -8,11 +8,15 @@ interface PillProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
 }
 
+// "success" is the one color left in — it marks a "watched" state, which is
+// the explicitly allowed structural-accent use case. Everything else is
+// strictly monochrome (white/gray), including "danger" (destructive actions
+// are conveyed by icon + copy, not hue).
 const ACTIVE_CLASSES: Record<Color, string> = {
-  primary: "bg-primary text-ink",
-  secondary: "bg-secondary text-ink",
+  primary: "bg-ink text-base",
+  secondary: "bg-ink text-base",
   success: "border border-success bg-successSoft text-success",
-  danger: "border border-danger/40 text-danger hover:bg-danger/10",
+  danger: "border border-surface3 text-ink",
 };
 
 export default function Pill({
@@ -24,7 +28,7 @@ export default function Pill({
 }: PillProps) {
   const inactiveClasses =
     color === "danger"
-      ? ACTIVE_CLASSES.danger
+      ? "border border-surface2 text-muted hover:text-ink hover:border-ink"
       : "border border-surface2 text-muted hover:text-ink";
 
   return (

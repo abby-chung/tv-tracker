@@ -28,14 +28,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-base px-4">
       <Card padding="lg" className="w-full max-w-sm rounded-lg">
         <div className="mb-8 text-center">
-          <Sparkles className="mx-auto h-8 w-8 text-primary" strokeWidth={2} />
+          <Sparkles className="mx-auto h-8 w-8 text-ink" strokeWidth={2} />
           <h1 className="mt-3 font-display text-display-lg">WatchReel</h1>
           <p className="mt-1 text-body-sm text-muted">Track every show and movie you watch.</p>
         </div>
 
         {status === "sent" ? (
           <p className="text-center text-body-sm text-ink">
-            Check <span className="text-primary">{email}</span> for a sign-in link.
+            Check <span className="text-ink font-medium">{email}</span> for a sign-in link.
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -54,7 +54,7 @@ export default function LoginPage() {
               {status === "sending" ? "Sending link…" : "Send sign-in link"}
             </Button>
             {status === "error" && (
-              <p className="text-body-sm text-danger">Something went wrong. Try again.</p>
+              <p className="text-body-sm text-muted">Something went wrong. Try again.</p>
             )}
           </form>
         )}
