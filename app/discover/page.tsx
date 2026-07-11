@@ -109,6 +109,7 @@ export default function DiscoverPage() {
           icon={Search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onClear={() => setQuery("")}
           placeholder="Search shows and movies…"
         />
       </header>

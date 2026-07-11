@@ -9,13 +9,13 @@ import Input from "@/components/ui/Input";
 import Card from "@/components/ui/Card";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
-import { useLists } from "@/lib/useLists";
+import { useListsContext } from "@/lib/LibraryContext";
 import type { TmdbResult } from "@/lib/types";
 
 export default function ListDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { lists, itemsFor, deleteList, addItemToList, removeItemFromList, loading } = useLists();
+  const { lists, itemsFor, deleteList, addItemToList, removeItemFromList, loading } = useListsContext();
 
   const list = lists.find((l) => l.id === params.id);
   const items = itemsFor(params.id);
@@ -106,6 +106,7 @@ export default function ListDetailPage() {
         icon={Search}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onClear={() => setQuery("")}
         placeholder="Search to add shows and movies…"
       />
 
