@@ -21,6 +21,15 @@ export function useLibrary(mediaType: MediaType) {
   // separate auth.getUser() round-trip.
   const userIdRef = useRef<string | null>(null);
 
+  /** Returns the user ID, fetching it from Supabase on first call. */
+  async function getUserId(): Promise<string | null> {
+    if (!userIdRef.current) {
+      const { data } = await supabase.auth.getUser();
+      userIdRef.current = data.user?.id ?? null;
+    }
+    return userIdRef.current;
+  }
+
   const [items, setItems] = useState<LibraryItem[]>(
     DEMO_MODE ? (mediaType === "tv" ? DEMO_SHOWS : DEMO_MOVIES) : []
   );
@@ -34,10 +43,7 @@ export function useLibrary(mediaType: MediaType) {
     setLoading(true);
 
     // Ensure we have the user ID cached for subsequent mutations.
-    if (!userIdRef.current) {
-      const { data } = await supabase.auth.getUser();
-      userIdRef.current = data.user?.id ?? null;
-    }
+    await getUserId();
 
     const [{ data: libraryData, error: libErr }, { data: watchedData, error: watchErr }] =
       await Promise.all([
@@ -70,7 +76,7 @@ export function useLibrary(mediaType: MediaType) {
     total_episodes?: number | null;
   }) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update — add to local items immediately
@@ -116,7 +122,7 @@ export function useLibrary(mediaType: MediaType) {
     runtime_minutes: number;
   }) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update
@@ -154,7 +160,7 @@ export function useLibrary(mediaType: MediaType) {
 
   async function updateStatus(tmdbId: number, status: LibraryStatus) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update
@@ -174,7 +180,7 @@ export function useLibrary(mediaType: MediaType) {
 
   async function toggleFavorite(tmdbId: number, isFavorite: boolean) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update
@@ -194,7 +200,7 @@ export function useLibrary(mediaType: MediaType) {
 
   async function removeFromLibrary(tmdbId: number) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update — remove from both collections immediately
@@ -227,7 +233,7 @@ export function useLibrary(mediaType: MediaType) {
     episode_number?: number | null;
   }) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update
@@ -273,7 +279,7 @@ export function useLibrary(mediaType: MediaType) {
     episodes: { episode_number: number; runtime_minutes: number }[]
   ) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update — add all episode rows to local state immediately
@@ -319,7 +325,7 @@ export function useLibrary(mediaType: MediaType) {
    */
   async function unmarkSeasonWatched(tmdbId: number, seasonNumber: number) {
     if (DEMO_MODE) return;
-    const userId = userIdRef.current;
+    const userId = await getUserId();
     if (!userId) return;
 
     // Optimistic update — remove all episode rows for this season immediately
