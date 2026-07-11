@@ -106,6 +106,20 @@ export function useLibrary(mediaType: MediaType) {
     await refresh();
   }
 
+  async function toggleFavorite(tmdbId: number, isFavorite: boolean) {
+    if (DEMO_MODE) return; // preview mode doesn't persist changes
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    await supabase
+      .from("library_items")
+      .update({ is_favorite: isFavorite })
+      .eq("user_id", userData.user.id)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    await refresh();
+  }
+
   async function removeFromLibrary(tmdbId: number) {
     if (DEMO_MODE) return; // preview mode doesn't persist changes
     const { data: userData } = await supabase.auth.getUser();
@@ -166,6 +180,7 @@ export function useLibrary(mediaType: MediaType) {
     markEpisodeWatched,
     unmarkEpisodeWatched,
     updateStatus,
+    toggleFavorite,
     removeFromLibrary,
     refresh,
   };

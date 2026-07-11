@@ -9,5 +9,5 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(new URL("/shows", request.url));
+  return NextResponse.redirect(new URL("/profile", request.url));
 }

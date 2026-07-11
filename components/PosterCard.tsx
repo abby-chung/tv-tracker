@@ -1,16 +1,20 @@
 import Image from "next/image";
+import { Clapperboard, Plus, X, Heart } from "lucide-react";
 import { TMDB_IMAGE_BASE } from "@/lib/types";
 import ProgressRing from "./ProgressRing";
+import IconButton from "./ui/IconButton";
 
 interface PosterCardProps {
   title: string;
   posterPath: string | null;
   progress?: number; // 0 to 1, shown as a glow ring overlay if provided
   subtitle?: string;
-  accent?: "glow" | "movie";
+  accent?: "primary" | "secondary";
+  favorite?: boolean; // shows a heart toggle overlay if defined (undefined = hidden)
   onClick?: () => void; // view details
   onAdd?: () => void; // shows a "+" button, does not navigate
   onRemove?: () => void; // shows a "×" button, does not navigate
+  onToggleFavorite?: () => void; // shows a heart button, does not navigate
 }
 
 export default function PosterCard({
@@ -18,19 +22,22 @@ export default function PosterCard({
   posterPath,
   progress,
   subtitle,
-  accent = "glow",
+  accent = "primary",
+  favorite,
   onClick,
   onAdd,
   onRemove,
+  onToggleFavorite,
 }: PosterCardProps) {
-  const ringColor = accent === "movie" ? "#5B8DEF" : "#F2A93B";
+  const ringColor = accent === "secondary" ? "#FF6B8B" : "#F4C430";
 
   return (
-    <div className="group flex w-full flex-col gap-2 rounded-card text-left">
+    <div className="group flex w-full flex-col gap-2 rounded-md text-left">
       <button
         onClick={onClick}
         disabled={!onClick}
-        className="focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-card bg-surface2"
+        className="focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface2
+          shadow-card transition-shadow duration-300 group-hover:shadow-glow-primary"
       >
         {posterPath ? (
           <Image
@@ -42,7 +49,7 @@ export default function PosterCard({
           />
         ) : (
           <div className="flex h-full items-center justify-center text-muted">
-            <span className="text-3xl">🎞</span>
+            <Clapperboard className="h-9 w-9" strokeWidth={1.5} />
           </div>
         )}
 
@@ -52,8 +59,33 @@ export default function PosterCard({
           </div>
         )}
 
+        {onToggleFavorite && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                onToggleFavorite();
+              }
+            }}
+            className="absolute left-2 top-2"
+          >
+            <IconButton
+              icon={Heart}
+              label={favorite ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
+              tone="danger"
+              filled={favorite}
+            />
+          </div>
+        )}
+
         {onAdd && (
-          <span
+          <div
             role="button"
             tabIndex={0}
             onClick={(e) => {
@@ -66,15 +98,14 @@ export default function PosterCard({
                 onAdd();
               }
             }}
-            className="focus-ring absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-base/80 text-lg text-glow backdrop-blur hover:bg-base"
-            aria-label={`Add ${title} to your library`}
+            className="absolute right-2 top-2"
           >
-            +
-          </span>
+            <IconButton icon={Plus} label={`Add ${title} to your library`} tone="primary" />
+          </div>
         )}
 
         {onRemove && (
-          <span
+          <div
             role="button"
             tabIndex={0}
             onClick={(e) => {
@@ -87,16 +118,15 @@ export default function PosterCard({
                 onRemove();
               }
             }}
-            className="focus-ring absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-base/80 text-sm text-danger opacity-0 backdrop-blur transition-opacity hover:bg-base group-hover:opacity-100"
-            aria-label={`Remove ${title} from your library`}
+            className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
           >
-            ✕
-          </span>
+            <IconButton icon={X} label={`Remove ${title} from your library`} tone="danger" />
+          </div>
         )}
       </button>
       <div>
-        <p className="line-clamp-1 font-body text-sm font-medium text-ink">{title}</p>
-        {subtitle && <p className="line-clamp-1 text-xs capitalize text-muted">{subtitle}</p>}
+        <p className="line-clamp-1 font-body text-body-md font-medium text-ink">{title}</p>
+        {subtitle && <p className="line-clamp-1 text-body-sm capitalize text-muted">{subtitle}</p>}
       </div>
     </div>
   );

@@ -10,9 +10,14 @@ create table if not exists library_items (
   title text not null,
   poster_path text,
   status text not null default 'watchlist' check (status in ('watchlist', 'watching', 'watched', 'upcoming')),
+  is_favorite boolean not null default false,
   added_at timestamptz not null default now(),
   unique (user_id, tmdb_id, media_type)
 );
+
+-- If you already ran this schema before the favorites feature, apply this
+-- migration once instead of recreating the table:
+-- alter table library_items add column if not exists is_favorite boolean not null default false;
 
 -- One row per episode a user has marked watched (movies use a single implicit "episode")
 create table if not exists watched_episodes (

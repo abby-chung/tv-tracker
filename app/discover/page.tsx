@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PosterCard from "@/components/PosterCard";
+import Input from "@/components/ui/Input";
+import { Search } from "lucide-react";
 import { useLibrary } from "@/lib/useLibrary";
 import type { TmdbResult } from "@/lib/types";
 
@@ -75,21 +77,21 @@ export default function DiscoverPage() {
   return (
     <div>
       <header className="mb-6">
-        <h1 className="mb-4 font-display text-2xl">Discover</h1>
-        <input
+        <h1 className="mb-4 font-display text-display-lg">Discover</h1>
+        <Input
+          icon={Search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search shows and movies…"
-          className="focus-ring w-full rounded-card border border-surface2 bg-surface px-4 py-3 text-ink placeholder:text-muted"
         />
       </header>
 
       {!query.trim() && (
-        <h2 className="mb-3 font-display text-lg text-muted">Trending this week</h2>
+        <h2 className="mb-3 font-display text-display-md text-ink">Trending this week</h2>
       )}
 
       {error && (
-        <p className="mb-4 rounded-card border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <p className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-4 py-3 text-body-sm text-danger">
           {error}
         </p>
       )}
@@ -109,7 +111,7 @@ export default function DiscoverPage() {
                 title={item.title ?? item.name ?? "Untitled"}
                 posterPath={item.poster_path}
                 subtitle={mediaType === "movie" ? "Movie" : "Show"}
-                accent={mediaType === "movie" ? "movie" : "glow"}
+                accent={mediaType === "movie" ? "secondary" : "primary"}
                 onClick={() => handleView(item)}
                 onAdd={addedIds.has(key) ? undefined : () => handleAdd(item)}
               />

@@ -23,6 +23,7 @@ export interface LibraryItem {
   title: string;
   poster_path: string | null;
   status: LibraryStatus;
+  is_favorite: boolean;
   added_at: string;
 }
 

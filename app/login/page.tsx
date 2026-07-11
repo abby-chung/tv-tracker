@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import Card from "@/components/ui/Card";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -22,44 +26,39 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-base px-4">
-      <div className="w-full max-w-sm rounded-card border border-surface2 bg-surface p-8">
+      <Card padding="lg" className="w-full max-w-sm rounded-lg">
         <div className="mb-8 text-center">
-          <span className="font-display text-3xl text-glow">◈</span>
-          <h1 className="mt-3 font-display text-2xl">WatchReel</h1>
-          <p className="mt-1 text-sm text-muted">Track every show and movie you watch.</p>
+          <Sparkles className="mx-auto h-8 w-8 text-primary" strokeWidth={2} />
+          <h1 className="mt-3 font-display text-display-lg">WatchReel</h1>
+          <p className="mt-1 text-body-sm text-muted">Track every show and movie you watch.</p>
         </div>
 
         {status === "sent" ? (
-          <p className="text-center text-sm text-ink">
-            Check <span className="text-glow">{email}</span> for a sign-in link.
+          <p className="text-center text-body-sm text-ink">
+            Check <span className="text-primary">{email}</span> for a sign-in link.
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <label className="text-sm text-muted" htmlFor="email">
+            <label className="text-body-sm text-muted" htmlFor="email">
               Email address
             </label>
-            <input
+            <Input
               id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="focus-ring rounded-card border border-surface2 bg-base px-4 py-3 text-ink placeholder:text-muted"
             />
-            <button
-              type="submit"
-              disabled={status === "sending"}
-              className="focus-ring rounded-card bg-glow px-4 py-3 font-display text-base font-medium text-base disabled:opacity-60"
-            >
+            <Button type="submit" disabled={status === "sending"} className="w-full">
               {status === "sending" ? "Sending link…" : "Send sign-in link"}
-            </button>
+            </Button>
             {status === "error" && (
-              <p className="text-sm text-danger">Something went wrong. Try again.</p>
+              <p className="text-body-sm text-danger">Something went wrong. Try again.</p>
             )}
           </form>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

@@ -3,9 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import { ArrowLeft, Star, Clapperboard, Check, ChevronUp, ChevronDown, Plus, Heart } from "lucide-react";
 import { TMDB_IMAGE_BASE } from "@/lib/types";
 import type { LibraryStatus } from "@/lib/types";
 import { useLibrary } from "@/lib/useLibrary";
+import Button from "@/components/ui/Button";
+import Pill from "@/components/ui/Pill";
+import Card from "@/components/ui/Card";
+import IconButton from "@/components/ui/IconButton";
 
 interface Season {
   id: number;
@@ -36,6 +41,8 @@ interface Details {
   vote_average?: number;
 }
 
+// "watched" now does double duty: it's both a library status and the
+// trigger that logs watch-time history (see handleStatusChange).
 const STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
   { key: "watchlist", label: "Watchlist" },
   { key: "watching", label: "Watching" },
@@ -47,6 +54,7 @@ export default function TitleDetailPage() {
   const router = useRouter();
   const mediaType = params.type === "movie" ? "movie" : "tv";
   const tmdbId = Number(params.id);
+  const accentColor = mediaType === "movie" ? "secondary" : "primary";
 
   const library = useLibrary(mediaType);
   const [details, setDetails] = useState<Details | null>(null);
@@ -77,8 +85,23 @@ export default function TitleDetailPage() {
     });
   }
 
+  // For movies, "Watched" is now a single control: picking the status pill
+  // both updates the status AND logs the runtime to watch-time history.
+  // Moving away from "Watched" un-logs it, keeping stats consistent.
   async function handleStatusChange(status: LibraryStatus) {
     await library.updateStatus(tmdbId, status);
+
+    if (mediaType !== "movie" || !details) return;
+    const alreadyWatched = library.watched.some((w) => w.tmdb_id === tmdbId);
+
+    if (status === "watched" && !alreadyWatched) {
+      await library.markEpisodeWatched({
+        tmdb_id: tmdbId,
+        runtime_minutes: details.runtime ?? 100,
+      });
+    } else if (status !== "watched" && alreadyWatched) {
+      await library.unmarkEpisodeWatched({ tmdb_id: tmdbId });
+    }
   }
 
   async function handleRemove() {
@@ -88,23 +111,40 @@ export default function TitleDetailPage() {
     }
   }
 
+  async function handleToggleFavorite() {
+    if (!details) return;
+    if (!isInLibrary) {
+      await handleAdd("watchlist");
+    }
+    await library.toggleFavorite(tmdbId, !libraryItem?.is_favorite);
+  }
+
+  async function ensureEpisodesLoaded(seasonNumber: number): Promise<Episode[]> {
+    if (episodesBySeason[seasonNumber]) return episodesBySeason[seasonNumber];
+    const res = await fetch(`/api/tmdb/season/${tmdbId}/${seasonNumber}`);
+    const data = await res.json();
+    const eps: Episode[] = data.episodes ?? [];
+    setEpisodesBySeason((prev) => ({ ...prev, [seasonNumber]: eps }));
+    return eps;
+  }
+
   async function toggleSeason(seasonNumber: number) {
     if (openSeason === seasonNumber) {
       setOpenSeason(null);
       return;
     }
     setOpenSeason(seasonNumber);
-    if (!episodesBySeason[seasonNumber]) {
-      const res = await fetch(`/api/tmdb/season/${tmdbId}/${seasonNumber}`);
-      const data = await res.json();
-      setEpisodesBySeason((prev) => ({ ...prev, [seasonNumber]: data.episodes ?? [] }));
-    }
+    await ensureEpisodesLoaded(seasonNumber);
   }
 
   function isEpisodeWatched(seasonNumber: number, episodeNumber: number) {
     return library.watched.some(
       (w) => w.tmdb_id === tmdbId && w.season_number === seasonNumber && w.episode_number === episodeNumber
     );
+  }
+
+  function watchedCountForSeason(seasonNumber: number) {
+    return library.watched.filter((w) => w.tmdb_id === tmdbId && w.season_number === seasonNumber).length;
   }
 
   async function toggleEpisode(episode: Episode, seasonNumber: number) {
@@ -125,29 +165,39 @@ export default function TitleDetailPage() {
     }
   }
 
-  async function toggleMovieWatched() {
-    if (!details) return;
-    const watched = library.watched.some((w) => w.tmdb_id === tmdbId);
-    if (!isInLibrary) await handleAdd("watched");
-    if (watched) {
-      await library.unmarkEpisodeWatched({ tmdb_id: tmdbId });
-    } else {
-      await library.markEpisodeWatched({
-        tmdb_id: tmdbId,
-        runtime_minutes: details.runtime ?? 100,
-      });
-      await library.updateStatus(tmdbId, "watched");
+  // Marks (or unmarks) every episode in a season in one action.
+  async function markAllSeason(season: Season) {
+    const eps = await ensureEpisodesLoaded(season.season_number);
+    const allWatched = watchedCountForSeason(season.season_number) >= season.episode_count && eps.length > 0;
+    if (!isInLibrary) await handleAdd("watching");
+
+    for (const ep of eps) {
+      const watched = isEpisodeWatched(season.season_number, ep.episode_number);
+      if (allWatched && watched) {
+        await library.unmarkEpisodeWatched({
+          tmdb_id: tmdbId,
+          season_number: season.season_number,
+          episode_number: ep.episode_number,
+        });
+      } else if (!allWatched && !watched) {
+        await library.markEpisodeWatched({
+          tmdb_id: tmdbId,
+          season_number: season.season_number,
+          episode_number: ep.episode_number,
+          runtime_minutes: ep.runtime ?? 40,
+        });
+      }
     }
   }
 
   if (error) {
     return (
-      <div className="rounded-card border border-danger/40 bg-danger/10 px-6 py-8 text-center">
+      <Card className="border border-danger/40 bg-danger/10 py-8 text-center shadow-none">
         <p className="text-danger">{error}</p>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 text-body-sm text-muted">
           Check that TMDB_API_KEY is set correctly, then reload.
         </p>
-      </div>
+      </Card>
     );
   }
 
@@ -157,16 +207,19 @@ export default function TitleDetailPage() {
 
   const title = details.title ?? details.name ?? "Untitled";
   const year = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
-  const movieWatched = mediaType === "movie" && library.watched.some((w) => w.tmdb_id === tmdbId);
 
   return (
     <div className="flex flex-col gap-6">
-      <button onClick={() => router.back()} className="focus-ring w-fit text-sm text-muted hover:text-ink">
-        ← Back
+      <button
+        onClick={() => router.back()}
+        className="focus-ring flex w-fit items-center gap-1.5 text-body-sm text-muted hover:text-ink"
+      >
+        <ArrowLeft className="h-4 w-4" strokeWidth={2} />
+        Back
       </button>
 
       <div className="flex flex-col gap-6 sm:flex-row">
-        <div className="relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-card bg-surface2 sm:w-52">
+        <div className="relative aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-md bg-surface2 shadow-card sm:w-52">
           {details.poster_path ? (
             <Image
               src={`${TMDB_IMAGE_BASE}${details.poster_path}`}
@@ -176,115 +229,139 @@ export default function TitleDetailPage() {
               className="object-cover"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-muted">🎞</div>
+            <div className="flex h-full items-center justify-center text-muted">
+              <Clapperboard className="h-10 w-10" strokeWidth={1.5} />
+            </div>
           )}
         </div>
 
         <div className="flex flex-1 flex-col gap-3">
-          <h1 className="font-display text-2xl">
-            {title} {year && <span className="text-muted">({year})</span>}
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-display text-display-lg">
+              {title} {year && <span className="text-muted">({year})</span>}
+            </h1>
+            <IconButton
+              icon={Heart}
+              label={libraryItem?.is_favorite ? "Remove from favorites" : "Add to favorites"}
+              variant="outline"
+              tone="danger"
+              filled={libraryItem?.is_favorite}
+              onClick={handleToggleFavorite}
+              className="shrink-0"
+            />
+          </div>
           {typeof details.vote_average === "number" && (
-            <p className="text-sm text-glow">★ {details.vote_average.toFixed(1)}</p>
+            <p className="flex items-center gap-1 text-body-sm text-warning">
+              <Star className="h-4 w-4 fill-warning" strokeWidth={0} />
+              {details.vote_average.toFixed(1)}
+            </p>
           )}
-          <p className="text-sm text-muted">{details.overview}</p>
+          <p className="text-body-sm text-muted">{details.overview}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {isInLibrary ? (
               <>
                 {STATUS_OPTIONS.map((opt) => (
-                  <button
+                  <Pill
                     key={opt.key}
+                    active={libraryItem?.status === opt.key}
+                    color={opt.key === "watched" ? "success" : accentColor}
                     onClick={() => handleStatusChange(opt.key)}
-                    className={`focus-ring rounded-full px-4 py-1.5 text-sm transition-colors ${
-                      libraryItem?.status === opt.key
-                        ? "bg-glow text-base"
-                        : "border border-surface2 text-muted hover:text-ink"
-                    }`}
                   >
                     {opt.label}
-                  </button>
+                  </Pill>
                 ))}
-                <button
-                  onClick={handleRemove}
-                  className="focus-ring rounded-full border border-danger/40 px-4 py-1.5 text-sm text-danger hover:bg-danger/10"
-                >
+                <Pill color="danger" onClick={handleRemove}>
                   Remove
-                </button>
+                </Pill>
               </>
             ) : (
-              <button
+              <Button
+                variant={accentColor}
+                size="sm"
+                icon={Plus}
+                className="rounded-full"
                 onClick={() => handleAdd("watchlist")}
-                className="focus-ring rounded-full bg-glow px-5 py-2 text-sm font-medium text-base"
               >
-                + Add to my {mediaType === "movie" ? "movies" : "shows"}
-              </button>
+                Add to my {mediaType === "movie" ? "movies" : "shows"}
+              </Button>
             )}
           </div>
-
-          {mediaType === "movie" && (
-            <button
-              onClick={toggleMovieWatched}
-              className={`focus-ring mt-2 w-fit rounded-card border px-4 py-2 text-sm ${
-                movieWatched
-                  ? "border-movie bg-movie/10 text-movie"
-                  : "border-surface2 text-muted hover:text-ink"
-              }`}
-            >
-              {movieWatched ? "✓ Watched" : "Mark as watched"}
-            </button>
-          )}
         </div>
       </div>
 
       {mediaType === "tv" && details.seasons && details.seasons.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="font-display text-lg text-muted">Seasons</h2>
+          <h2 className="font-display text-display-md text-ink">Seasons</h2>
           {details.seasons
             .filter((s) => s.season_number > 0)
-            .map((season) => (
-              <div key={season.id} className="rounded-card border border-surface2 bg-surface">
-                <button
-                  onClick={() => toggleSeason(season.season_number)}
-                  className="focus-ring flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <span className="text-sm font-medium text-ink">{season.name}</span>
-                  <span className="text-xs text-muted">
-                    {season.episode_count} episodes {openSeason === season.season_number ? "▲" : "▼"}
-                  </span>
-                </button>
-                {openSeason === season.season_number && (
-                  <ul className="divide-y divide-surface2 border-t border-surface2">
-                    {(episodesBySeason[season.season_number] ?? []).map((ep) => {
-                      const watched = isEpisodeWatched(season.season_number, ep.episode_number);
-                      return (
-                        <li key={ep.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                          <div>
-                            <p className="text-sm text-ink">
-                              {ep.episode_number}. {ep.name}
-                            </p>
-                            {ep.air_date && <p className="text-xs text-muted">{ep.air_date}</p>}
-                          </div>
-                          <button
-                            onClick={() => toggleEpisode(ep, season.season_number)}
-                            className={`focus-ring shrink-0 rounded-full border px-3 py-1 text-xs ${
-                              watched
-                                ? "border-glow bg-glow/10 text-glow"
-                                : "border-surface2 text-muted hover:text-ink"
-                            }`}
-                          >
-                            {watched ? "✓ Watched" : "Mark watched"}
-                          </button>
-                        </li>
-                      );
-                    })}
-                    {!episodesBySeason[season.season_number] && (
-                      <li className="px-4 py-3 text-sm text-muted">Loading episodes…</li>
-                    )}
-                  </ul>
-                )}
-              </div>
-            ))}
+            .map((season) => {
+              const watchedCount = watchedCountForSeason(season.season_number);
+              const pct = season.episode_count > 0 ? Math.min(100, (watchedCount / season.episode_count) * 100) : 0;
+              const fullyWatched = season.episode_count > 0 && watchedCount >= season.episode_count;
+              const isOpen = openSeason === season.season_number;
+
+              return (
+                <Card key={season.id} padding="sm" className="!p-0 overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <button
+                      onClick={() => toggleSeason(season.season_number)}
+                      className="focus-ring flex flex-1 items-center justify-between gap-2 text-left"
+                    >
+                      <span className="text-body-md font-medium text-ink">{season.name}</span>
+                      <span className="flex items-center gap-1 text-body-sm text-muted">
+                        {watchedCount}/{season.episode_count}
+                        {isOpen ? (
+                          <ChevronUp className="h-4 w-4" strokeWidth={2} />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" strokeWidth={2} />
+                        )}
+                      </span>
+                    </button>
+                    <IconButton
+                      icon={Check}
+                      label={fullyWatched ? `Mark all of ${season.name} unwatched` : `Mark all of ${season.name} watched`}
+                      variant={fullyWatched ? "filled" : "outline"}
+                      tone="success"
+                      onClick={() => markAllSeason(season)}
+                    />
+                  </div>
+                  <div className="h-1 w-full bg-surface2">
+                    <div
+                      className="h-full bg-success transition-all duration-300"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {isOpen && (
+                    <ul className="divide-y divide-surface2">
+                      {(episodesBySeason[season.season_number] ?? []).map((ep) => {
+                        const watched = isEpisodeWatched(season.season_number, ep.episode_number);
+                        return (
+                          <li key={ep.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                            <div>
+                              <p className="text-body-md text-ink">
+                                {ep.episode_number}. {ep.name}
+                              </p>
+                              {ep.air_date && <p className="text-body-sm text-muted">{ep.air_date}</p>}
+                            </div>
+                            <IconButton
+                              icon={Check}
+                              label={watched ? "Mark unwatched" : "Mark watched"}
+                              variant={watched ? "filled" : "outline"}
+                              tone="success"
+                              onClick={() => toggleEpisode(ep, season.season_number)}
+                            />
+                          </li>
+                        );
+                      })}
+                      {!episodesBySeason[season.season_number] && (
+                        <li className="px-4 py-3 text-body-sm text-muted">Loading episodes…</li>
+                      )}
+                    </ul>
+                  )}
+                </Card>
+              );
+            })}
         </section>
       )}
     </div>

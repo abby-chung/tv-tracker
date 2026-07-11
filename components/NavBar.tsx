@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Compass, CircleUserRound, Sparkles } from "lucide-react";
 
 const TABS = [
-  { href: "/shows", label: "Shows", icon: "📺" },
-  { href: "/movies", label: "Movies", icon: "🎬" },
-  { href: "/discover", label: "Discover", icon: "🧭" },
-  { href: "/profile", label: "Profile", icon: "◐" },
+  { href: "/profile", label: "Profile", icon: CircleUserRound },
+  { href: "/discover", label: "Discover", icon: Compass },
 ];
 
 export default function NavBar() {
@@ -21,20 +20,25 @@ export default function NavBar() {
                  bottom-0 left-0 right-0 flex-row justify-around border-t py-2
                  md:bottom-0 md:top-0 md:right-auto md:w-20 md:flex-col md:justify-start md:gap-6 md:border-r md:border-t-0 md:py-8"
     >
-      <div className="hidden md:block md:mb-4 md:text-center">
-        <span className="font-display text-2xl text-glow">◈</span>
+      <div className="hidden md:mb-4 md:flex md:justify-center">
+        <Sparkles className="h-6 w-6 text-primary" strokeWidth={2} />
       </div>
       {TABS.map((tab) => {
         const active = pathname?.startsWith(tab.href);
+        const Icon = tab.icon;
         return (
           <Link
             key={tab.href}
             href={tab.href}
-            className={`focus-ring flex flex-col items-center gap-1 rounded-card px-3 py-1 text-xs transition-colors
-              ${active ? "text-glow" : "text-muted hover:text-ink"}`}
+            className={`focus-ring flex flex-col items-center gap-1 rounded-md px-3 py-1.5 text-body-sm transition-colors
+              ${active ? "text-primary" : "text-muted hover:text-ink"}`}
           >
-            <span className="text-lg" aria-hidden>
-              {tab.icon}
+            <span
+              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors
+                ${active ? "bg-primarySoft" : ""}`}
+              aria-hidden
+            >
+              <Icon className="h-5 w-5" strokeWidth={2} />
             </span>
             <span className="font-body">{tab.label}</span>
           </Link>
