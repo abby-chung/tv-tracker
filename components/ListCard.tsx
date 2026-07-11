@@ -1,13 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { List, Plus } from "lucide-react";
-import { TMDB_IMAGE_BASE } from "@/lib/types";
-import type { LibraryItem } from "@/lib/types";
+import { TMDB_IMAGE_BASE } from "@/lib/constants";
+import type { ListItemRow } from "@/lib/types";
 
 interface ListCardProps {
   id: string;
   name: string;
-  items: LibraryItem[];
+  items: ListItemRow[];
 }
 
 export function ListCard({ id, name, items }: ListCardProps) {

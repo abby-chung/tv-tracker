@@ -1,15 +1,14 @@
 import Image from "next/image";
 import { Clapperboard, Plus, X, Heart } from "lucide-react";
-import { TMDB_IMAGE_BASE } from "@/lib/types";
-import ProgressRing from "./ProgressRing";
+import { TMDB_IMAGE_BASE } from "@/lib/constants";
 import IconButton from "./ui/IconButton";
 
 interface PosterCardProps {
   title: string;
   posterPath: string | null;
-  progress?: number; // 0 to 1, shown as a glow ring overlay if provided
+  /** 0 to 1. Shown as a progress bar at the bottom of the poster. */
+  progress?: number;
   subtitle?: string;
-  accent?: "primary" | "secondary"; // kept for API compatibility; no longer affects color
   favorite?: boolean; // shows a heart toggle overlay if defined (undefined = hidden)
   onClick?: () => void; // view details
   onAdd?: () => void; // shows a "+" button, does not navigate
@@ -28,17 +27,26 @@ export default function PosterCard({
   onRemove,
   onToggleFavorite,
 }: PosterCardProps) {
-  // Single accent color everywhere — hue no longer distinguishes shows vs
-  // movies, per the monochrome design (color is reserved for progress only).
-  const ringColor = "#F4C430";
+  const isComplete = typeof progress === "number" && progress >= 1;
 
   return (
     <div className="group flex w-full flex-col gap-2 rounded-md text-left">
-      <button
+      {/* Use a div + role="button" so action overlays are never nested
+          inside a <button> — that would be invalid HTML. */}
+      <div
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
         onClick={onClick}
-        disabled={!onClick}
-        className="focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface2
-          shadow-card transition-shadow duration-300 group-hover:shadow-glow"
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") onClick();
+              }
+            : undefined
+        }
+        className={`focus-ring relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface2
+          shadow-card transition-shadow duration-300 group-hover:shadow-glow
+          ${onClick ? "cursor-pointer" : ""}`}
       >
         {posterPath ? (
           <Image
@@ -54,9 +62,13 @@ export default function PosterCard({
           </div>
         )}
 
-        {typeof progress === "number" && (
-          <div className="absolute bottom-2 right-2">
-            <ProgressRing progress={progress} size={34} strokeWidth={4} color={ringColor} />
+        {/* Progress bar — replaces the ring. Yellow while in-progress, green when done. */}
+        {typeof progress === "number" && progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+            <div
+              className={`h-full transition-all duration-300 ${isComplete ? "bg-success" : "bg-[#F4C430]"}`}
+              style={{ width: `${Math.min(1, progress) * 100}%` }}
+            />
           </div>
         )}
 
@@ -124,7 +136,7 @@ export default function PosterCard({
             <IconButton icon={X} label={`Remove ${title} from your library`} tone="ink" />
           </div>
         )}
-      </button>
+      </div>
       <div>
         <p className="line-clamp-1 font-body text-body-md font-medium text-ink">{title}</p>
         {subtitle && <p className="line-clamp-1 text-body-sm capitalize text-muted">{subtitle}</p>}

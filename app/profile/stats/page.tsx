@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Tv, Film, ListVideo, Clapperboard } from "lucide-react";
-import { useLibrary } from "@/lib/useLibrary";
+import { useLibraryContext } from "@/lib/LibraryContext";
 import { TimeStatCard, CountStatCard, breakdownTime } from "@/components/StatCards";
 import Pill from "@/components/ui/Pill";
 import type { TmdbGenre } from "@/lib/types";
@@ -30,20 +30,23 @@ function topGenres(items: { genre_ids?: number[] }[], options: TmdbGenre[]): Gen
 export default function StatsDetailPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("tv");
-  const tv = useLibrary("tv");
-  const movie = useLibrary("movie");
+  const { tv, movie } = useLibraryContext();
   const [tvGenres, setTvGenres] = useState<TmdbGenre[]>([]);
   const [movieGenres, setMovieGenres] = useState<TmdbGenre[]>([]);
 
+  // Fetch both genre lists in parallel
   useEffect(() => {
-    fetch("/api/tmdb/genres?type=tv")
-      .then((r) => r.json())
-      .then((d) => setTvGenres(d.genres ?? []))
-      .catch(() => setTvGenres([]));
-    fetch("/api/tmdb/genres?type=movie")
-      .then((r) => r.json())
-      .then((d) => setMovieGenres(d.genres ?? []))
-      .catch(() => setMovieGenres([]));
+    Promise.all([
+      fetch("/api/tmdb/genres?type=tv").then((r) => r.json()),
+      fetch("/api/tmdb/genres?type=movie").then((r) => r.json()),
+    ])
+      .then(([tvData, movieData]) => {
+        setTvGenres(tvData.genres ?? []);
+        setMovieGenres(movieData.genres ?? []);
+      })
+      .catch(() => {
+        // Leave genres empty — UI handles the fallback message
+      });
   }, []);
 
   const tvMinutes = useMemo(

@@ -12,6 +12,7 @@ create table if not exists library_items (
   status text not null default 'watchlist' check (status in ('watchlist', 'watching', 'watched', 'upcoming')),
   is_favorite boolean not null default false,
   genre_ids integer[] not null default '{}',
+  total_episodes integer,          -- null until known; populated when a TV show is added
   added_at timestamptz not null default now(),
   unique (user_id, tmdb_id, media_type)
 );
@@ -23,6 +24,10 @@ create table if not exists library_items (
 -- If you already ran this schema before the genre-stats feature, apply this
 -- migration once instead of recreating the table:
 -- alter table library_items add column if not exists genre_ids integer[] not null default '{}';
+
+-- If you already ran this schema before the total-episodes feature, apply this
+-- migration once instead of recreating the table:
+-- alter table library_items add column if not exists total_episodes integer;
 
 -- One row per episode a user has marked watched (movies use a single implicit "episode")
 create table if not exists watched_episodes (
@@ -53,3 +58,42 @@ create policy "Users manage their own watched episodes"
 
 create index if not exists idx_library_items_user on library_items(user_id);
 create index if not exists idx_watched_episodes_user on watched_episodes(user_id);
+
+-- ─── Lists ────────────────────────────────────────────────────────────────────
+
+-- A user-created named list (e.g. "Want to watch with Sarah")
+create table if not exists lists (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+-- Items inside a list — one row per title added to a list
+create table if not exists list_items (
+  id uuid primary key default gen_random_uuid(),
+  list_id uuid references lists(id) on delete cascade not null,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  tmdb_id integer not null,
+  media_type text not null check (media_type in ('tv', 'movie')),
+  title text not null,
+  poster_path text,
+  added_at timestamptz not null default now(),
+  unique (list_id, tmdb_id, media_type)
+);
+
+alter table lists enable row level security;
+alter table list_items enable row level security;
+
+create policy "Users manage their own lists"
+  on lists for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Users manage their own list items"
+  on list_items for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists idx_lists_user on lists(user_id);
+create index if not exists idx_list_items_list on list_items(list_id);

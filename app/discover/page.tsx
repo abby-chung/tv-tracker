@@ -5,20 +5,19 @@ import { useRouter } from "next/navigation";
 import PosterCard from "@/components/PosterCard";
 import Input from "@/components/ui/Input";
 import { Search } from "lucide-react";
-import { useLibrary } from "@/lib/useLibrary";
+import { useLibraryContext } from "@/lib/LibraryContext";
 import type { TmdbResult } from "@/lib/types";
 
 export default function DiscoverPage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TmdbResult[]>([]);
-  const [trendingShows, setTrendingShows] = useState<TmdbResult[]>([]);
+  const [trending, setTrending] = useState<TmdbResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-  const tvLibrary = useLibrary("tv");
-  const movieLibrary = useLibrary("movie");
+  const { tv: tvLibrary, movie: movieLibrary } = useLibraryContext();
 
   function isInLibrary(item: TmdbResult): boolean {
     const mediaType = item.media_type === "movie" ? "movie" : "tv";
@@ -26,11 +25,32 @@ export default function DiscoverPage() {
     return library.items.some((i) => i.tmdb_id === item.id) || addedIds.has(`${mediaType}-${item.id}`);
   }
 
+  // Fetch trending TV and movies in parallel, then interleave them so the
+  // grid shows a mix rather than all TV followed by all movies.
   useEffect(() => {
-    fetch("/api/tmdb/discover?type=tv&mode=trending")
-      .then((r) => r.json())
-      .then((data) => setTrendingShows(data.results ?? []))
-      .catch(() => setTrendingShows([]));
+    Promise.all([
+      fetch("/api/tmdb/discover?type=tv&mode=trending").then((r) => r.json()),
+      fetch("/api/tmdb/discover?type=movie&mode=trending").then((r) => r.json()),
+    ])
+      .then(([tvData, movieData]) => {
+        const tvResults: TmdbResult[] = (tvData.results ?? []).map((r: TmdbResult) => ({
+          ...r,
+          media_type: "tv" as const,
+        }));
+        const movieResults: TmdbResult[] = (movieData.results ?? []).map((r: TmdbResult) => ({
+          ...r,
+          media_type: "movie" as const,
+        }));
+        // Interleave: tv, movie, tv, movie…
+        const interleaved: TmdbResult[] = [];
+        const len = Math.max(tvResults.length, movieResults.length);
+        for (let i = 0; i < len; i++) {
+          if (tvResults[i]) interleaved.push(tvResults[i]);
+          if (movieResults[i]) interleaved.push(movieResults[i]);
+        }
+        setTrending(interleaved);
+      })
+      .catch(() => setTrending([]));
   }, []);
 
   useEffect(() => {
@@ -79,7 +99,7 @@ export default function DiscoverPage() {
     router.push(`/title/${mediaType}/${item.id}`);
   }
 
-  const listToShow = query.trim() ? results : trendingShows;
+  const listToShow = query.trim() ? results : trending;
 
   return (
     <div>

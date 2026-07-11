@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
+import { LibraryProvider } from "@/lib/LibraryContext";
 
 const display = Space_Grotesk({
   subsets: ["latin"],
@@ -37,7 +38,9 @@ export default function RootLayout({
       >
         <NavBar />
         <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 md:py-10">
-          {children}
+          <LibraryProvider>
+            {children}
+          </LibraryProvider>
         </main>
       </body>
     </html>

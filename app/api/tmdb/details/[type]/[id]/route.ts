@@ -10,6 +10,9 @@ export async function GET(
     const data = await getDetails(mediaType, params.id);
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: "TMDB request failed" }, { status: 502 });
+    return NextResponse.json(
+      { error: "TMDB request failed", detail: err instanceof Error ? err.message : String(err) },
+      { status: 502 }
+    );
   }
 }

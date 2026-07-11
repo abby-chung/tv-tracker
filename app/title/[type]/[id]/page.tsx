@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeft, Star, Clapperboard, Check, ChevronUp, ChevronDown, Plus, Heart } from "lucide-react";
-import { TMDB_IMAGE_BASE } from "@/lib/types";
+import { TMDB_IMAGE_BASE } from "@/lib/constants";
 import type { LibraryStatus } from "@/lib/types";
-import { useLibrary } from "@/lib/useLibrary";
+import { useLibraryFor } from "@/lib/LibraryContext";
 import Button from "@/components/ui/Button";
 import Pill from "@/components/ui/Pill";
 import Card from "@/components/ui/Card";
+import Modal from "@/components/ui/Modal";
 import IconButton from "@/components/ui/IconButton";
 
 interface Season {
@@ -42,11 +43,16 @@ interface Details {
   genres?: { id: number; name: string }[];
 }
 
-// "watched" now does double duty: it's both a library status and the
-// trigger that logs watch-time history (see handleStatusChange).
-const STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
+// STATUS_OPTIONS for TV shows and movies — "upcoming" is movie-only.
+const TV_STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
   { key: "watchlist", label: "Watchlist" },
   { key: "watching", label: "Watching" },
+  { key: "watched", label: "Watched" },
+];
+
+const MOVIE_STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
+  { key: "upcoming", label: "Upcoming" },
+  { key: "watchlist", label: "Watchlist" },
   { key: "watched", label: "Watched" },
 ];
 
@@ -56,11 +62,12 @@ export default function TitleDetailPage() {
   const mediaType = params.type === "movie" ? "movie" : "tv";
   const tmdbId = Number(params.id);
 
-  const library = useLibrary(mediaType);
+  const library = useLibraryFor(mediaType);
   const [details, setDetails] = useState<Details | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openSeason, setOpenSeason] = useState<number | null>(null);
   const [episodesBySeason, setEpisodesBySeason] = useState<Record<number, Episode[]>>({});
+  const [removeOpen, setRemoveOpen] = useState(false);
 
   useEffect(() => {
     fetch(`/api/tmdb/details/${mediaType}/${tmdbId}`)
@@ -77,12 +84,22 @@ export default function TitleDetailPage() {
 
   async function handleAdd(status: LibraryStatus = "watchlist") {
     if (!details) return;
+    // For TV shows, sum episode counts across all non-special seasons so the
+    // progress bar on the profile page has an accurate denominator.
+    const totalEpisodes =
+      mediaType === "tv"
+        ? details.seasons
+            ?.filter((s) => s.season_number > 0)
+            .reduce((sum, s) => sum + s.episode_count, 0) ?? null
+        : null;
+
     await library.addToLibrary({
       tmdb_id: tmdbId,
       title: details.title ?? details.name ?? "Untitled",
       poster_path: details.poster_path,
       status,
       genre_ids: details.genres?.map((g) => g.id),
+      total_episodes: totalEpisodes,
     });
   }
 
@@ -106,10 +123,8 @@ export default function TitleDetailPage() {
   }
 
   async function handleRemove() {
-    if (window.confirm("Remove this from your library? This also clears its watch history.")) {
-      await library.removeFromLibrary(tmdbId);
-      router.back();
-    }
+    await library.removeFromLibrary(tmdbId);
+    router.back();
   }
 
   async function handleToggleFavorite() {
@@ -117,7 +132,10 @@ export default function TitleDetailPage() {
     if (!isInLibrary) {
       await handleAdd("watchlist");
     }
-    await library.toggleFavorite(tmdbId, !libraryItem?.is_favorite);
+    // Use the explicit desired state rather than reading libraryItem?.is_favorite,
+    // which may still be undefined/stale if handleAdd hasn't refreshed yet.
+    const nextFavorite = !libraryItem?.is_favorite;
+    await library.toggleFavorite(tmdbId, nextFavorite);
   }
 
   async function ensureEpisodesLoaded(seasonNumber: number): Promise<Episode[]> {
@@ -259,7 +277,7 @@ export default function TitleDetailPage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {isInLibrary ? (
               <>
-                {STATUS_OPTIONS.map((opt) => (
+                {(mediaType === "movie" ? MOVIE_STATUS_OPTIONS : TV_STATUS_OPTIONS).map((opt) => (
                   <Pill
                     key={opt.key}
                     active={libraryItem?.status === opt.key}
@@ -269,7 +287,7 @@ export default function TitleDetailPage() {
                     {opt.label}
                   </Pill>
                 ))}
-                <Pill color="danger" onClick={handleRemove}>
+                <Pill color="danger" onClick={() => setRemoveOpen(true)}>
                   Remove
                 </Pill>
               </>
@@ -362,6 +380,22 @@ export default function TitleDetailPage() {
             })}
         </section>
       )}
+
+      {/* Remove confirmation modal */}
+      <Modal open={removeOpen} onClose={() => setRemoveOpen(false)} title="Remove from library">
+        <p className="mb-6 text-body-sm text-muted">
+          Remove &ldquo;{title}&rdquo; from your library? This also clears its watch history and
+          can&apos;t be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setRemoveOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleRemove}>
+            Remove
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

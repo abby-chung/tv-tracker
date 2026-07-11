@@ -5,8 +5,13 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { tvId: string; season: string } }
 ) {
+  const seasonNumber = Number(params.season);
+  if (!Number.isInteger(seasonNumber) || seasonNumber < 0) {
+    return NextResponse.json({ error: "Invalid season number" }, { status: 400 });
+  }
+
   try {
-    const data = await getSeason(params.tvId, Number(params.season));
+    const data = await getSeason(params.tvId, seasonNumber);
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(

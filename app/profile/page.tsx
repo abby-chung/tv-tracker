@@ -10,9 +10,10 @@ import Button from "@/components/ui/Button";
 import Avatar from "@/components/ui/Avatar";
 import Pill from "@/components/ui/Pill";
 import Card from "@/components/ui/Card";
+import Modal from "@/components/ui/Modal";
+import Input from "@/components/ui/Input";
 import { TimeStatCard, CountStatCard, breakdownTime } from "@/components/StatCards";
-import { useLibrary } from "@/lib/useLibrary";
-import { useLists } from "@/lib/useLists";
+import { useLibraryContext, useListsContext } from "@/lib/LibraryContext";
 import { createClient } from "@/lib/supabase/client";
 import type { LibraryItem, LibraryStatus } from "@/lib/types";
 
@@ -32,13 +33,24 @@ const MOVIE_FILTERS: { key: LibraryStatus | "all"; label: string }[] = [
 
 export default function ProfilePage() {
   const router = useRouter();
-  const tv = useLibrary("tv");
-  const movie = useLibrary("movie");
-  const { lists, itemsFor, createList } = useLists();
+  const { tv, movie } = useLibraryContext();
+  const { lists, itemsFor, createList } = useListsContext();
   const [email, setEmail] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<LibraryStatus | "all">("all");
   const [movieFilter, setMovieFilter] = useState<LibraryStatus | "all">("all");
-  const supabase = createClient();
+
+  // Modal state: remove confirmation
+  const [removeTarget, setRemoveTarget] = useState<{
+    mediaType: "tv" | "movie";
+    tmdbId: number;
+    title: string;
+  } | null>(null);
+
+  // Modal state: create list
+  const [createListOpen, setCreateListOpen] = useState(false);
+  const [newListName, setNewListName] = useState("");
+
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
@@ -64,19 +76,32 @@ export default function ProfilePage() {
   const favoriteShows = useMemo(() => tv.items.filter((i) => i.is_favorite), [tv.items]);
   const favoriteMovies = useMemo(() => movie.items.filter((i) => i.is_favorite), [movie.items]);
 
-  function showProgressFor(tmdbId: number) {
-    const count = tv.watched.filter((w) => w.tmdb_id === tmdbId).length;
-    return Math.min(1, count / 10);
+  function showProgressFor(item: LibraryItem): number {
+    // Explicitly marked watched → always full green bar.
+    if (item.status === "watched") return 1;
+    const watchedCount = tv.watched.filter((w) => w.tmdb_id === item.tmdb_id).length;
+    if (watchedCount === 0) return 0;
+    // Use the stored total episode count for an accurate fraction when available.
+    if (item.total_episodes && item.total_episodes > 0) {
+      return Math.min(0.99, watchedCount / item.total_episodes);
+    }
+    // Fallback for older items added before total_episodes was stored: cap at
+    // 0.99 so the bar stays yellow (in-progress) regardless of episode count.
+    return Math.min(0.99, watchedCount / Math.max(watchedCount + 1, 10));
   }
 
   function isMovieWatched(tmdbId: number) {
     return movie.watched.some((w) => w.tmdb_id === tmdbId);
   }
 
-  async function handleRemove(mediaType: "tv" | "movie", tmdbId: number, title: string) {
-    if (window.confirm(`Remove "${title}" from your library? This also clears its watch history.`)) {
-      await (mediaType === "tv" ? tv : movie).removeFromLibrary(tmdbId);
-    }
+  function handleRemove(mediaType: "tv" | "movie", tmdbId: number, title: string) {
+    setRemoveTarget({ mediaType, tmdbId, title });
+  }
+
+  async function confirmRemove() {
+    if (!removeTarget) return;
+    await (removeTarget.mediaType === "tv" ? tv : movie).removeFromLibrary(removeTarget.tmdbId);
+    setRemoveTarget(null);
   }
 
   async function handleToggleFavorite(mediaType: "tv" | "movie", item: LibraryItem) {
@@ -89,9 +114,15 @@ export default function ProfilePage() {
   }
 
   async function handleCreateList() {
-    const name = window.prompt("List name:");
-    if (!name?.trim()) return;
-    await createList(name.trim());
+    setNewListName("");
+    setCreateListOpen(true);
+  }
+
+  async function confirmCreateList() {
+    if (!newListName.trim()) return;
+    await createList(newListName.trim());
+    setCreateListOpen(false);
+    setNewListName("");
   }
 
   const loading = tv.loading || movie.loading;
@@ -144,7 +175,7 @@ export default function ProfilePage() {
             activeFilter={showFilter}
             onFilterChange={setShowFilter}
             items={filteredShows}
-            getProgress={(item) => showProgressFor(item.tmdb_id)}
+            getProgress={(item) => showProgressFor(item)}
             onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
             onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
             onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
@@ -154,7 +185,7 @@ export default function ProfilePage() {
             <PosterSection
               title="Favorite Shows"
               items={favoriteShows}
-              getProgress={(item) => showProgressFor(item.tmdb_id)}
+              getProgress={(item) => showProgressFor(item)}
               onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
               onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
               onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
@@ -197,6 +228,51 @@ export default function ProfilePage() {
           </section>
         </>
       )}
+
+      {/* Remove confirmation modal */}
+      <Modal
+        open={Boolean(removeTarget)}
+        onClose={() => setRemoveTarget(null)}
+        title="Remove from library"
+      >
+        <p className="mb-6 text-body-sm text-muted">
+          Remove &ldquo;{removeTarget?.title}&rdquo; from your library? This also clears its watch
+          history and can&apos;t be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setRemoveTarget(null)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={confirmRemove}>
+            Remove
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Create list modal */}
+      <Modal open={createListOpen} onClose={() => setCreateListOpen(false)} title="New list">
+        <Input
+          value={newListName}
+          onChange={(e) => setNewListName(e.target.value)}
+          placeholder="List name…"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmCreateList();
+          }}
+        />
+        <div className="mt-4 flex justify-end gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setCreateListOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={confirmCreateList}
+            disabled={!newListName.trim()}
+          >
+            Create
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

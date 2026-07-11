@@ -25,6 +25,7 @@ export interface LibraryItem {
   status: LibraryStatus;
   is_favorite: boolean;
   genre_ids?: number[]; // TMDB genre ids captured when the title was added
+  total_episodes?: number | null; // total episode count for TV shows; null for movies / unknown
   added_at: string;
 }
 
@@ -44,4 +45,22 @@ export interface TmdbGenre {
   name: string;
 }
 
-export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342";
+export interface ListRow {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface ListItemRow {
+  id: string;
+  list_id: string;
+  user_id: string;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  poster_path: string | null;
+  added_at: string;
+}
+
+export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"; // re-exported from lib/constants — import from there for new code

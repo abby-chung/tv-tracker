@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Search, Trash2 } from "lucide-react";
 import PosterCard from "@/components/PosterCard";
 import Input from "@/components/ui/Input";
 import Card from "@/components/ui/Card";
+import Modal from "@/components/ui/Modal";
+import Button from "@/components/ui/Button";
 import { useLists } from "@/lib/useLists";
 import type { TmdbResult } from "@/lib/types";
 
@@ -20,6 +23,7 @@ export default function ListDetailPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TmdbResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -41,12 +45,10 @@ export default function ListDetailPage() {
     return () => clearTimeout(timeout);
   }, [query]);
 
-  async function handleDeleteList() {
+  async function confirmDeleteList() {
     if (!list) return;
-    if (window.confirm(`Delete "${list.name}"? This can't be undone.`)) {
-      await deleteList(list.id);
-      router.push("/profile");
-    }
+    await deleteList(list.id);
+    router.push("/profile");
   }
 
   async function handleAdd(item: TmdbResult) {
@@ -67,13 +69,13 @@ export default function ListDetailPage() {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-muted">List not found.</p>
-        <button
-          onClick={() => router.push("/profile")}
+        <Link
+          href="/profile"
           className="focus-ring flex w-fit items-center gap-1.5 text-body-sm text-muted hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2} />
           Back to Profile
-        </button>
+        </Link>
       </div>
     );
   }
@@ -91,7 +93,7 @@ export default function ListDetailPage() {
       <header className="flex items-center justify-between gap-3">
         <h1 className="font-display text-display-lg">{list.name}</h1>
         <button
-          onClick={handleDeleteList}
+          onClick={() => setDeleteOpen(true)}
           className="focus-ring flex shrink-0 items-center gap-1.5 rounded-md border border-danger/40
             px-3 py-1.5 text-body-sm text-danger hover:bg-danger/10"
         >
@@ -123,7 +125,6 @@ export default function ListDetailPage() {
                   title={item.title ?? item.name ?? "Untitled"}
                   posterPath={item.poster_path}
                   subtitle={mediaType === "movie" ? "Movie" : "Show"}
-                  accent={mediaType === "movie" ? "secondary" : "primary"}
                   onAdd={already ? undefined : () => handleAdd(item)}
                 />
               );
@@ -142,13 +143,27 @@ export default function ListDetailPage() {
               title={item.title}
               posterPath={item.poster_path}
               subtitle={item.media_type === "movie" ? "Movie" : "Show"}
-              accent={item.media_type === "movie" ? "secondary" : "primary"}
               onClick={() => router.push(`/title/${item.media_type}/${item.tmdb_id}`)}
               onRemove={() => removeItemFromList(item.id)}
             />
           ))}
         </div>
       )}
+
+      {/* Delete list confirmation modal */}
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Delete list">
+        <p className="mb-6 text-body-sm text-muted">
+          Delete &ldquo;{list.name}&rdquo;? This can&apos;t be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={confirmDeleteList}>
+            Delete
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
