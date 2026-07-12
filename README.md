@@ -1,20 +1,23 @@
 # WatchReel
 
-A personal TV & movie tracker — inspired by TV Time. Track what you're watching, mark episodes and movies as watched, browse what's popular, and see your all-time watch stats.
+A personal TV & movie tracker — inspired by TV Time. Track what you're watching, mark episodes and movies as watched, browse what's popular, organize titles into custom lists, and see your all-time watch stats.
 
 Built with **Next.js**, **Supabase** (database + login), and **TMDB** (show/movie data). Deploys to **Vercel** for free.
 
 ---
 
-## What's in this app (v1)
+## What's in this app
 
-- **Shows** — your TV watchlist, poster grid, filter by watching/watchlist/watched
-- **Movies** — watchlist, watched, and upcoming releases
-- **Discover** — search TMDB and browse what's trending; tap a poster to add it to your library
-- **Profile** — your total watch-time "clock," episodes/movies watched, per-category breakdown
+- **Shows** — your TV watchlist, poster grid with filters (Watching / Watchlist / Watched), season-by-season episode tracking, and a "mark whole season watched" shortcut
+- **Movies** — watchlist, watched, and upcoming releases, with a single tap to log watch time
+- **Discover** — search TMDB and browse what's trending this week; tap a poster to add it straight to your library
+- **Lists** — create custom named lists (e.g. "Watch with Sarah"), search and add titles to them, and delete lists you no longer need
+- **Favorites** — heart any show or movie to pin it to a dedicated Favorites row on your profile
+- **Profile** — your total watch-time "clock," episodes/movies watched, and quick access to everything above
+- **Stats** — a dedicated breakdown page (`/profile/stats`) showing time spent per category and your top genres, shows vs. movies
 - **Login** — simple, passwordless email sign-in (a magic link, no passwords to remember)
 
-No social features in this version (comments, friends, reactions) — it's a solo tracker by design.
+No social features (comments, friends, reactions) — it's a solo tracker by design.
 
 ---
 
@@ -36,7 +39,7 @@ npm install
 npm run dev
 ```
 
-**5. Open http://localhost:3000 in your browser.** You'll see the full app — Shows, Movies, Discover, Profile — with sample data. Adding/removing titles won't be saved yet (that needs a real Supabase project), but you'll see exactly how everything looks and navigates.
+**5. Open http://localhost:3000 in your browser.** You'll see the full app — Shows, Movies, Discover, Profile, Lists — with sample data. Adding/removing titles won't be saved yet (that needs a real Supabase project), but you'll see exactly how everything looks and navigates.
 
 When you're ready to make it fully functional (your own data, saved permanently), delete `.env.local` and follow the "One-time setup" section below instead.
 
@@ -59,7 +62,7 @@ You'll create two free accounts and copy 3 keys into one file. No coding require
 2. Click **New Project**. Pick any name and a database password (save the password somewhere safe, though you won't need it day-to-day).
 3. Once the project finishes setting up (~2 minutes), go to **Settings → API Keys** in the left sidebar.
 4. Copy the **Project URL** (also in Settings → API) and the **Publishable key** (`sb_publishable_...`) — if you don't see one yet, click **Create new API keys** to generate it. You'll paste both in step 3 below. This app never needs the **Secret key** — that one stays out of the codebase entirely.
-5. Go to **SQL Editor** in the left sidebar, click **New query**, open the file `supabase/schema.sql` from this project, paste its entire contents in, and click **Run**. This creates the two tables the app needs *and* turns on Row Level Security with policies that restrict every row to its owner — you can double check this worked by going to **Table Editor** and confirming both tables show RLS as enabled.
+5. Go to **SQL Editor** in the left sidebar, click **New query**, open the file `supabase/schema.sql` from this project, paste its entire contents in, and click **Run**. This creates all the tables the app needs (library items, watched episodes, lists, list items) *and* turns on Row Level Security with policies that restrict every row to its owner — you can double check this worked by going to **Table Editor** and confirming all tables show RLS as enabled.
 6. Go to **Authentication → Providers** and make sure **Email** is enabled (it is by default). Also go to **Authentication → URL Configuration** and add your site's URL once you know it (see deployment step below) so login links work correctly.
 
 ### 3. Add your keys to the app
@@ -103,14 +106,21 @@ From then on, any time you (or Claude, in a future session) push updated code to
 ## Project structure
 
 ```
-app/                  Pages (Shows, Movies, Discover, Profile, Login)
-  api/tmdb/           Server routes that securely call TMDB (your key never reaches the browser)
-  auth/callback/      Handles the magic-link sign-in redirect
-components/           Reusable UI: NavBar, PosterCard, ProgressRing (the glow-ring signature element)
-lib/                  Supabase clients, TMDB helper, shared types, the useLibrary data hook
-supabase/schema.sql   Database tables + security rules — run this once in Supabase's SQL Editor
-middleware.ts         Keeps you logged in across page visits; redirects to /login if signed out
+app/                       Pages (Shows, Movies, Discover, Profile, Stats, Lists, Login, Title detail)
+  api/tmdb/                Server routes that securely call TMDB (your key never reaches the browser)
+  auth/callback/           Handles the magic-link sign-in redirect
+  lists/[id]/              A single list's detail page — search, add, remove titles
+  profile/stats/           Detailed watch-time and top-genre breakdown
+  title/[type]/[id]/       Show/movie detail page — seasons, episodes, status, favorites
+components/                Reusable UI: NavBar, PosterCard, ProgressRing, ListCard, StatCards
+  ui/                      Design-system primitives: Button, Card, Pill, Badge, Avatar, IconButton, Input, Modal
+lib/                       Supabase clients, TMDB helper, shared types, useLibrary/useLists data hooks, LibraryContext
+supabase/schema.sql        Database tables + security rules — run this once in Supabase's SQL Editor
+middleware.ts              Keeps you logged in across page visits; redirects to /login if signed out
+DESIGN_SYSTEM.md           Visual language reference (colors, type, components) — see below
 ```
+
+See `DESIGN_SYSTEM.md` for the full visual language reference (colors, typography, spacing, and component conventions) if you're extending the UI later.
 
 ## Maintaining it later
 
