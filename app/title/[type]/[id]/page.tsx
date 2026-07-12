@@ -3,7 +3,19 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowLeft, Star, Clapperboard, Check, ChevronUp, ChevronDown, Plus, Heart } from "lucide-react";
+import {
+  ArrowLeft,
+  Star,
+  Clapperboard,
+  Check,
+  ChevronUp,
+  ChevronDown,
+  Plus,
+  Heart,
+  Calendar,
+  Eye,
+  X,
+} from "lucide-react";
 import { TMDB_IMAGE_BASE } from "@/lib/constants";
 import type { LibraryStatus } from "@/lib/types";
 import { useLibraryFor } from "@/lib/LibraryContext";
@@ -26,6 +38,9 @@ interface Episode {
   name: string;
   runtime: number | null;
   air_date: string | null;
+  still_path?: string | null;
+  overview?: string;
+  vote_average?: number;
 }
 
 interface Details {
@@ -68,6 +83,10 @@ export default function TitleDetailPage() {
   const [openSeason, setOpenSeason] = useState<number | null>(null);
   const [episodesBySeason, setEpisodesBySeason] = useState<Record<number, Episode[]>>({});
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [selectedEpisode, setSelectedEpisode] = useState<{
+    episode: Episode;
+    seasonNumber: number;
+  } | null>(null);
 
   useEffect(() => {
     fetch(`/api/tmdb/details/${mediaType}/${tmdbId}`)
@@ -162,6 +181,13 @@ export default function TitleDetailPage() {
     );
   }
 
+  function watchedAtFor(seasonNumber: number, episodeNumber: number): string | null {
+    const rec = library.watched.find(
+      (w) => w.tmdb_id === tmdbId && w.season_number === seasonNumber && w.episode_number === episodeNumber
+    );
+    return rec?.watched_at ?? null;
+  }
+
   function watchedCountForSeason(seasonNumber: number) {
     return library.watched.filter((w) => w.tmdb_id === tmdbId && w.season_number === seasonNumber).length;
   }
@@ -206,6 +232,47 @@ export default function TitleDetailPage() {
     }
   }
 
+  // Marks (or unmarks) every episode across every season in one pass — the
+  // show-level equivalent of markAllSeason. Unlike markAllSeason this spans
+  // multiple seasons, so it's written to minimize round-trips rather than
+  // looping season-by-season:
+  //  - season episode lists are fetched from TMDB in parallel (not one at a
+  //    time), and only for seasons not already cached in episodesBySeason
+  //  - the resulting watched rows are written in a single Supabase upsert
+  //    instead of one upsert per season
+  async function markAllShowWatched() {
+    if (!details?.seasons) return;
+    const seasons = details.seasons.filter((s) => s.season_number > 0);
+    if (seasons.length === 0) return;
+
+    const allWatched = seasons.every(
+      (s) => s.episode_count > 0 && watchedCountForSeason(s.season_number) >= s.episode_count
+    );
+
+    if (!isInLibrary) await handleAdd("watching");
+
+    if (allWatched) {
+      // Single delete for the whole show instead of one per season.
+      await library.unmarkShowWatched(tmdbId);
+      return;
+    }
+
+    const episodeLists = await Promise.all(
+      seasons.map((season) => ensureEpisodesLoaded(season.season_number))
+    );
+
+    const entries = seasons.flatMap((season, i) =>
+      episodeLists[i].map((ep) => ({
+        season_number: season.season_number,
+        episode_number: ep.episode_number,
+        runtime_minutes: ep.runtime ?? 40,
+      }))
+    );
+
+    // Single upsert covering every episode in every season.
+    await library.markEpisodesWatched(tmdbId, entries);
+  }
+
   if (error) {
     return (
       <Card className="border border-surface3 bg-surface2 py-8 text-center shadow-none">
@@ -223,6 +290,13 @@ export default function TitleDetailPage() {
 
   const title = details.title ?? details.name ?? "Untitled";
   const year = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
+
+  const numberedSeasons = details.seasons?.filter((s) => s.season_number > 0) ?? [];
+  const allSeasonsWatched =
+    numberedSeasons.length > 0 &&
+    numberedSeasons.every(
+      (s) => s.episode_count > 0 && watchedCountForSeason(s.season_number) >= s.episode_count
+    );
 
   return (
     <div className="flex flex-col gap-6">
@@ -308,76 +382,107 @@ export default function TitleDetailPage() {
 
       {mediaType === "tv" && details.seasons && details.seasons.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="font-display text-display-md text-ink">Seasons</h2>
-          {details.seasons
-            .filter((s) => s.season_number > 0)
-            .map((season) => {
-              const watchedCount = watchedCountForSeason(season.season_number);
-              const pct = season.episode_count > 0 ? Math.min(100, (watchedCount / season.episode_count) * 100) : 0;
-              const fullyWatched = season.episode_count > 0 && watchedCount >= season.episode_count;
-              const isOpen = openSeason === season.season_number;
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-display-md text-ink">Seasons</h2>
+            <IconButton
+              icon={Check}
+              label={allSeasonsWatched ? "Mark all seasons unwatched" : "Mark all seasons watched"}
+              variant={allSeasonsWatched ? "filled" : "outline"}
+              tone="success"
+              onClick={markAllShowWatched}
+            />
+          </div>
+          {numberedSeasons.map((season) => {
+            const watchedCount = watchedCountForSeason(season.season_number);
+            const pct = season.episode_count > 0 ? Math.min(100, (watchedCount / season.episode_count) * 100) : 0;
+            const fullyWatched = season.episode_count > 0 && watchedCount >= season.episode_count;
+            const isOpen = openSeason === season.season_number;
 
-              return (
-                <Card key={season.id} padding="sm" className="!p-0 overflow-hidden">
-                  <div className="flex items-center gap-3 px-4 py-3">
-                    <button
-                      onClick={() => toggleSeason(season.season_number)}
-                      className="focus-ring flex flex-1 items-center justify-between gap-2 text-left"
-                    >
-                      <span className="text-body-md font-medium text-ink">{season.name}</span>
-                      <span className="flex items-center gap-1 text-body-sm text-muted">
-                        {watchedCount}/{season.episode_count}
-                        {isOpen ? (
-                          <ChevronUp className="h-4 w-4" strokeWidth={2} />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" strokeWidth={2} />
-                        )}
-                      </span>
-                    </button>
-                    <IconButton
-                      icon={Check}
-                      label={fullyWatched ? `Mark all of ${season.name} unwatched` : `Mark all of ${season.name} watched`}
-                      variant={fullyWatched ? "filled" : "outline"}
-                      tone="success"
-                      onClick={() => markAllSeason(season)}
-                    />
-                  </div>
-                  <div className="h-1 w-full bg-surface2">
-                    <div
-                      className="h-full bg-success transition-all duration-300"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  {isOpen && (
-                    <ul className="divide-y divide-surface2">
-                      {(episodesBySeason[season.season_number] ?? []).map((ep) => {
-                        const watched = isEpisodeWatched(season.season_number, ep.episode_number);
-                        return (
-                          <li key={ep.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                            <div>
-                              <p className="text-body-md text-ink">
-                                {ep.episode_number}. {ep.name}
-                              </p>
-                              {ep.air_date && <p className="text-body-sm text-muted">{ep.air_date}</p>}
-                            </div>
-                            <IconButton
-                              icon={Check}
-                              label={watched ? "Mark unwatched" : "Mark watched"}
-                              variant={watched ? "filled" : "outline"}
-                              tone="success"
-                              onClick={() => toggleEpisode(ep, season.season_number)}
-                            />
-                          </li>
-                        );
-                      })}
-                      {!episodesBySeason[season.season_number] && (
-                        <li className="px-4 py-3 text-body-sm text-muted">Loading episodes…</li>
+            return (
+              <Card key={season.id} padding="sm" className="!p-0 overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <button
+                    onClick={() => toggleSeason(season.season_number)}
+                    className="focus-ring flex flex-1 items-center justify-between gap-2 text-left"
+                  >
+                    <span className="text-body-md font-medium text-ink">{season.name}</span>
+                    <span className="flex items-center gap-1 text-body-sm text-muted">
+                      {watchedCount}/{season.episode_count}
+                      {isOpen ? (
+                        <ChevronUp className="h-4 w-4" strokeWidth={2} />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" strokeWidth={2} />
                       )}
-                    </ul>
-                  )}
-                </Card>
-              );
-            })}
+                    </span>
+                  </button>
+                  <IconButton
+                    icon={Check}
+                    label={fullyWatched ? `Mark all of ${season.name} unwatched` : `Mark all of ${season.name} watched`}
+                    variant={fullyWatched ? "filled" : "outline"}
+                    tone="success"
+                    onClick={() => markAllSeason(season)}
+                  />
+                </div>
+                <div className="h-1 w-full bg-surface2">
+                  <div
+                    className={`h-full transition-all duration-300 ${fullyWatched ? "bg-success" : "bg-[#F4C430]"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {isOpen && (
+                  <ul className="divide-y divide-surface2">
+                    {(episodesBySeason[season.season_number] ?? []).map((ep) => {
+                      const watched = isEpisodeWatched(season.season_number, ep.episode_number);
+                      return (
+                        <li key={ep.id} className="flex items-center gap-3 px-4 py-3">
+                          <button
+                            onClick={() =>
+                              setSelectedEpisode({ episode: ep, seasonNumber: season.season_number })
+                            }
+                            className="focus-ring flex flex-1 items-center gap-3 overflow-hidden text-left"
+                          >
+                            <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-sm bg-surface2">
+                              {ep.still_path ? (
+                                <Image
+                                  src={`${TMDB_IMAGE_BASE}${ep.still_path}`}
+                                  alt={ep.name}
+                                  fill
+                                  sizes="96px"
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-muted">
+                                  <Clapperboard className="h-5 w-5" strokeWidth={1.5} />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-body-sm font-semibold uppercase tracking-wide text-ink">
+                                S{String(season.season_number).padStart(2, "0")} | E
+                                {String(ep.episode_number).padStart(2, "0")}
+                              </p>
+                              <p className="line-clamp-1 text-body-md text-ink">{ep.name}</p>
+                            </div>
+                          </button>
+                          <IconButton
+                            icon={Check}
+                            label={watched ? "Mark unwatched" : "Mark watched"}
+                            variant={watched ? "filled" : "outline"}
+                            tone="success"
+                            onClick={() => toggleEpisode(ep, season.season_number)}
+                            className="shrink-0"
+                          />
+                        </li>
+                      );
+                    })}
+                    {!episodesBySeason[season.season_number] && (
+                      <li className="px-4 py-3 text-body-sm text-muted">Loading episodes…</li>
+                    )}
+                  </ul>
+                )}
+              </Card>
+            );
+          })}
         </section>
       )}
 
@@ -396,6 +501,138 @@ export default function TitleDetailPage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Episode detail */}
+      {selectedEpisode && (
+        <EpisodeDetailModal
+          episode={selectedEpisode.episode}
+          seasonNumber={selectedEpisode.seasonNumber}
+          showTitle={title}
+          watchedAt={watchedAtFor(selectedEpisode.seasonNumber, selectedEpisode.episode.episode_number)}
+          isWatched={isEpisodeWatched(selectedEpisode.seasonNumber, selectedEpisode.episode.episode_number)}
+          onToggleWatched={() => toggleEpisode(selectedEpisode.episode, selectedEpisode.seasonNumber)}
+          onClose={() => setSelectedEpisode(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EpisodeDetailModal({
+  episode,
+  seasonNumber,
+  showTitle,
+  watchedAt,
+  isWatched,
+  onToggleWatched,
+  onClose,
+}: {
+  episode: Episode;
+  seasonNumber: number;
+  showTitle: string;
+  watchedAt: string | null;
+  isWatched: boolean;
+  onToggleWatched: () => void;
+  onClose: () => void;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="episode-modal-title"
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-lg bg-surface shadow-card sm:rounded-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative aspect-video w-full shrink-0 bg-surface2">
+          {episode.still_path ? (
+            <Image
+              src={`${TMDB_IMAGE_BASE}${episode.still_path}`}
+              alt={episode.name}
+              fill
+              sizes="384px"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-muted">
+              <Clapperboard className="h-10 w-10" strokeWidth={1.5} />
+            </div>
+          )}
+          <span className="absolute left-3 top-3 rounded-full border border-white/40 bg-base/70 px-3 py-1 text-caption uppercase text-ink backdrop-blur">
+            {showTitle}
+          </span>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="focus-ring absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-base/70 text-ink backdrop-blur"
+          >
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="flex items-start justify-between gap-3 px-5 pt-4">
+          <div className="min-w-0">
+            <p className="text-body-sm font-semibold uppercase tracking-wide text-muted">
+              S{String(seasonNumber).padStart(2, "0")} | E{String(episode.episode_number).padStart(2, "0")}
+            </p>
+            <h2 id="episode-modal-title" className="font-display text-display-md text-ink">
+              {episode.name}
+            </h2>
+          </div>
+          <IconButton
+            icon={Check}
+            label={isWatched ? "Mark unwatched" : "Mark watched"}
+            variant={isWatched ? "filled" : "outline"}
+            tone="success"
+            onClick={onToggleWatched}
+            className="mt-1 shrink-0"
+          />
+        </div>
+
+        {(episode.air_date || watchedAt) && (
+          <div className="flex flex-wrap items-center gap-4 px-5 pt-3 text-body-sm text-muted">
+            {episode.air_date && (
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" strokeWidth={2} />
+                {episode.air_date}
+              </span>
+            )}
+            {watchedAt && (
+              <span className="flex items-center gap-1.5">
+                <Eye className="h-4 w-4" strokeWidth={2} />
+                {new Date(watchedAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        )}
+
+        {episode.overview && (
+          <div className="mt-4 border-t border-surface2 px-5 py-4">
+            <h3 className="mb-2 font-display text-body-lg text-ink">Episode info</h3>
+            {typeof episode.vote_average === "number" && episode.vote_average > 0 && (
+              <p className="mb-2 flex items-center gap-1 text-body-sm text-ink">
+                <Star className="h-4 w-4 fill-accent text-accent" strokeWidth={0} />
+                {episode.vote_average.toFixed(1)}/10
+              </p>
+            )}
+            <p className="text-body-sm text-muted">{episode.overview}</p>
+          </div>
+        )}
+
+        <div className="h-5" />
+      </div>
     </div>
   );
 }

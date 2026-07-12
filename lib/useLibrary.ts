@@ -63,6 +63,12 @@ export function useLibrary(mediaType: MediaType) {
     setLoading(false);
   }, [mediaType, supabase]);
 
+  // Only fetch on mount. Every mutation below applies an optimistic local
+  // update and then writes to Supabase — since the write mirrors exactly
+  // what the optimistic update already did, there's no need to re-fetch the
+  // whole library afterward (that used to cost 2 extra queries per click).
+  // If a write fails, the error is logged and the optimistic state may
+  // drift from the server until the next full refresh (e.g. next page load).
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -112,7 +118,6 @@ export function useLibrary(mediaType: MediaType) {
       { onConflict: "user_id,tmdb_id,media_type" }
     );
     if (error) console.error("Failed to add to library:", error.message);
-    await refresh();
   }
 
   async function markEpisodeWatched(params: {
@@ -155,7 +160,73 @@ export function useLibrary(mediaType: MediaType) {
       { onConflict: "user_id,tmdb_id,media_type,season_number,episode_number" }
     );
     if (error) console.error("Failed to mark episode watched:", error.message);
-    await refresh();
+  }
+
+  /**
+   * Bulk-mark episodes across one or more seasons of the same show in a
+   * single upsert. Used for "mark whole show watched" so a multi-season
+   * show costs one write instead of one per season.
+   */
+  async function markEpisodesWatched(
+    tmdbId: number,
+    entries: { season_number: number; episode_number: number; runtime_minutes: number }[]
+  ) {
+    if (DEMO_MODE || entries.length === 0) return;
+    const userId = await getUserId();
+    if (!userId) return;
+
+    const now = new Date().toISOString();
+    const newRows: WatchedEpisode[] = entries.map((e) => ({
+      id: `optimistic-${tmdbId}-${e.season_number}-${e.episode_number}`,
+      user_id: userId,
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      season_number: e.season_number,
+      episode_number: e.episode_number,
+      runtime_minutes: e.runtime_minutes,
+      watched_at: now,
+    }));
+
+    // Optimistic update — replace any existing rows for these episodes,
+    // then add the full new set in one state update.
+    setWatched((prev) => {
+      const key = (w: { tmdb_id: number; season_number: number | null; episode_number: number | null }) =>
+        `${w.tmdb_id}-${w.season_number}-${w.episode_number}`;
+      const newKeys = new Set(newRows.map(key));
+      const filtered = prev.filter((w) => w.tmdb_id !== tmdbId || !newKeys.has(key(w)));
+      return [...filtered, ...newRows];
+    });
+
+    const rows = entries.map((e) => ({
+      user_id: userId,
+      tmdb_id: tmdbId,
+      media_type: mediaType,
+      season_number: e.season_number,
+      episode_number: e.episode_number,
+      runtime_minutes: e.runtime_minutes,
+    }));
+
+    const { error } = await supabase
+      .from("watched_episodes")
+      .upsert(rows, { onConflict: "user_id,tmdb_id,media_type,season_number,episode_number" });
+    if (error) console.error("Failed to mark episodes watched:", error.message);
+  }
+
+  /** Removes every watched row for a show in one delete — the unmark side of markEpisodesWatched. */
+  async function unmarkShowWatched(tmdbId: number) {
+    if (DEMO_MODE) return;
+    const userId = await getUserId();
+    if (!userId) return;
+
+    setWatched((prev) => prev.filter((w) => w.tmdb_id !== tmdbId));
+
+    const { error } = await supabase
+      .from("watched_episodes")
+      .delete()
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    if (error) console.error("Failed to unmark show watched:", error.message);
   }
 
   async function updateStatus(tmdbId: number, status: LibraryStatus) {
@@ -175,7 +246,6 @@ export function useLibrary(mediaType: MediaType) {
       .eq("tmdb_id", tmdbId)
       .eq("media_type", mediaType);
     if (error) console.error("Failed to update status:", error.message);
-    await refresh();
   }
 
   async function toggleFavorite(tmdbId: number, isFavorite: boolean) {
@@ -195,7 +265,6 @@ export function useLibrary(mediaType: MediaType) {
       .eq("tmdb_id", tmdbId)
       .eq("media_type", mediaType);
     if (error) console.error("Failed to toggle favorite:", error.message);
-    await refresh();
   }
 
   async function removeFromLibrary(tmdbId: number) {
@@ -224,7 +293,6 @@ export function useLibrary(mediaType: MediaType) {
     ]);
     if (libErr) console.error("Failed to remove from library:", libErr.message);
     if (watchErr) console.error("Failed to clear watch history:", watchErr.message);
-    await refresh();
   }
 
   async function unmarkEpisodeWatched(params: {
@@ -266,12 +334,11 @@ export function useLibrary(mediaType: MediaType) {
 
     const { error } = await query;
     if (error) console.error("Failed to unmark episode:", error.message);
-    await refresh();
   }
 
   /**
-   * Bulk-mark every episode in a season watched in a single upsert, then
-   * refresh once. Avoids N sequential round-trips from the per-episode path.
+   * Bulk-mark every episode in a season in a single upsert, replacing the
+   * N sequential per-episode round-trips the naive approach would take.
    */
   async function markSeasonWatched(
     tmdbId: number,
@@ -315,13 +382,10 @@ export function useLibrary(mediaType: MediaType) {
       .from("watched_episodes")
       .upsert(rows, { onConflict: "user_id,tmdb_id,media_type,season_number,episode_number" });
     if (error) console.error("Failed to mark season watched:", error.message);
-
-    await refresh();
   }
 
   /**
-   * Bulk-delete every watched record for a season in a single delete, then
-   * refresh once.
+   * Bulk-delete every watched record for a season in a single delete.
    */
   async function unmarkSeasonWatched(tmdbId: number, seasonNumber: number) {
     if (DEMO_MODE) return;
@@ -341,8 +405,6 @@ export function useLibrary(mediaType: MediaType) {
       .eq("media_type", mediaType)
       .eq("season_number", seasonNumber);
     if (error) console.error("Failed to unmark season watched:", error.message);
-
-    await refresh();
   }
 
   return {
@@ -351,7 +413,9 @@ export function useLibrary(mediaType: MediaType) {
     loading,
     addToLibrary,
     markEpisodeWatched,
+    markEpisodesWatched,
     unmarkEpisodeWatched,
+    unmarkShowWatched,
     markSeasonWatched,
     unmarkSeasonWatched,
     updateStatus,
