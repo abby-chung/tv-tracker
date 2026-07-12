@@ -1,4 +1,4 @@
-import type { LibraryItem, TmdbGenre, TmdbResult, WatchedEpisode } from "./types";
+import type { LibraryItem, ListItemRow, ListRow, TmdbGenre, TmdbResult, WatchedEpisode } from "./types";
 
 // Real TMDB poster paths so the demo looks like the real thing.
 // Only the CDN image loads (image.tmdb.org needs no API key) — no live
@@ -88,5 +88,16 @@ export const DEMO_GENRES: Record<"tv" | "movie", TmdbGenre[]> = {
     { id: 37, name: "Western" },
   ],
 };
+
+export const DEMO_LISTS: ListRow[] = [
+  { id: "list-1", user_id: "demo", name: "Must Watch", created_at: "" },
+  { id: "list-2", user_id: "demo", name: "Friday Night", created_at: "" },
+];
+
+export const DEMO_LIST_ITEMS: ListItemRow[] = [
+  { id: "li-1", list_id: "list-1", user_id: "demo", tmdb_id: 27205, media_type: "movie", title: "Inception", poster_path: "/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg", added_at: "" },
+  { id: "li-2", list_id: "list-1", user_id: "demo", tmdb_id: 1396, media_type: "tv", title: "Breaking Bad", poster_path: "/ggFHVNu6YYI5L9pCfOacjizRGt.jpg", added_at: "" },
+  { id: "li-3", list_id: "list-2", user_id: "demo", tmdb_id: 693134, media_type: "movie", title: "Dune: Part Two", poster_path: "/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg", added_at: "" },
+];
 
 export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
