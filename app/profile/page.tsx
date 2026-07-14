@@ -168,6 +168,8 @@ export default function ProfilePage() {
         <p className="text-muted">Loading your library…</p>
       ) : (
         <>
+          <SectionDivider />
+
           <PosterSection
             title="Shows"
             emptyMessage="No shows tracked yet. Head to Discover to find one."
@@ -192,6 +194,8 @@ export default function ProfilePage() {
             />
           )}
 
+          <SectionDivider />
+
           <PosterSection
             title="Movies"
             emptyMessage="No movies tracked yet. Head to Discover to find one."
@@ -215,6 +219,8 @@ export default function ProfilePage() {
               onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
             />
           )}
+
+          <SectionDivider />
 
           {/* Lists */}
           <section>
@@ -275,6 +281,11 @@ export default function ProfilePage() {
       </Modal>
     </div>
   );
+}
+
+/** A simple hairline used to visually separate Shows / Movies / Lists on the profile page. */
+function SectionDivider() {
+  return <div className="border-t border-surface2" aria-hidden="true" />;
 }
 
 function PosterSection({

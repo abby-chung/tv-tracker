@@ -14,6 +14,7 @@ import {
   Heart,
   Calendar,
   Eye,
+  Clock,
   X,
 } from "lucide-react";
 import { TMDB_IMAGE_BASE } from "@/lib/constants";
@@ -24,6 +25,7 @@ import Pill from "@/components/ui/Pill";
 import Card from "@/components/ui/Card";
 import Modal from "@/components/ui/Modal";
 import IconButton from "@/components/ui/IconButton";
+import Badge from "@/components/ui/Badge";
 
 interface Season {
   id: number;
@@ -54,8 +56,11 @@ interface Details {
   seasons?: Season[];
   first_air_date?: string;
   release_date?: string;
+  last_air_date?: string; // tv — used to compute an end year once the show has ended
+  status?: string; // tv — e.g. "Ended", "Canceled", "Returning Series"
   vote_average?: number;
   genres?: { id: number; name: string }[];
+  original_language?: string; // ISO 639-1 code, e.g. "en"
 }
 
 // STATUS_OPTIONS for TV shows and movies — "upcoming" is movie-only.
@@ -70,6 +75,27 @@ const MOVIE_STATUS_OPTIONS: { key: LibraryStatus; label: string }[] = [
   { key: "watchlist", label: "Watchlist" },
   { key: "watched", label: "Watched" },
 ];
+
+/** "128" -> "2h 8m", "45" -> "45m". Returns null for missing/zero runtimes. */
+function formatRuntime(minutes?: number | null): string | null {
+  if (!minutes || minutes <= 0) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/** "en" -> "English". Falls back to the raw code if Intl can't resolve it. */
+function languageName(code?: string): string | null {
+  if (!code) return null;
+  try {
+    const dn = new Intl.DisplayNames(["en"], { type: "language" });
+    return dn.of(code) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
 
 export default function TitleDetailPage() {
   const params = useParams<{ type: string; id: string }>();
@@ -122,22 +148,35 @@ export default function TitleDetailPage() {
     });
   }
 
-  // For movies, "Watched" is now a single control: picking the status pill
-  // both updates the status AND logs the runtime to watch-time history.
-  // Moving away from "Watched" un-logs it, keeping stats consistent.
+  // For movies, "Watched" is a single control: picking the status pill both
+  // updates the status AND logs the runtime to watch-time history. Moving
+  // away from "Watched" un-logs it, keeping stats consistent.
+  //
+  // For TV shows, the status pill is a convenience: "Watched" checks off
+  // every episode in every season (via markAllShowWatched), while moving
+  // to Watchlist/Watching clears all watched state so the user can check
+  // episodes off manually as they actually watch them.
   async function handleStatusChange(status: LibraryStatus) {
     await library.updateStatus(tmdbId, status);
+    if (!details) return;
 
-    if (mediaType !== "movie" || !details) return;
-    const alreadyWatched = library.watched.some((w) => w.tmdb_id === tmdbId);
+    if (mediaType === "movie") {
+      const alreadyWatched = library.watched.some((w) => w.tmdb_id === tmdbId);
+      if (status === "watched" && !alreadyWatched) {
+        await library.markEpisodeWatched({
+          tmdb_id: tmdbId,
+          runtime_minutes: details.runtime ?? 100,
+        });
+      } else if (status !== "watched" && alreadyWatched) {
+        await library.unmarkEpisodeWatched({ tmdb_id: tmdbId });
+      }
+      return;
+    }
 
-    if (status === "watched" && !alreadyWatched) {
-      await library.markEpisodeWatched({
-        tmdb_id: tmdbId,
-        runtime_minutes: details.runtime ?? 100,
-      });
-    } else if (status !== "watched" && alreadyWatched) {
-      await library.unmarkEpisodeWatched({ tmdb_id: tmdbId });
+    if (status === "watched") {
+      await markAllShowWatched(true);
+    } else {
+      await library.unmarkShowWatched(tmdbId);
     }
   }
 
@@ -232,15 +271,22 @@ export default function TitleDetailPage() {
     }
   }
 
-  // Marks (or unmarks) every episode across every season in one pass — the
-  // show-level equivalent of markAllSeason. Unlike markAllSeason this spans
-  // multiple seasons, so it's written to minimize round-trips rather than
-  // looping season-by-season:
+  // Marks (or unmarks) every episode across every season in one pass.
+  //
+  // `forceWatched` lets callers skip the toggle-based inference and state
+  // explicitly what they want:
+  //  - undefined (default): toggle based on current state (used by the
+  //    "Mark all seasons watched/unwatched" button)
+  //  - true: always mark everything watched (used by the "Watched" status
+  //    pill, regardless of what's currently checked)
+  //
+  // Unlike markAllSeason this spans multiple seasons, so it's written to
+  // minimize round-trips rather than looping season-by-season:
   //  - season episode lists are fetched from TMDB in parallel (not one at a
   //    time), and only for seasons not already cached in episodesBySeason
   //  - the resulting watched rows are written in a single Supabase upsert
   //    instead of one upsert per season
-  async function markAllShowWatched() {
+  async function markAllShowWatched(forceWatched?: boolean) {
     if (!details?.seasons) return;
     const seasons = details.seasons.filter((s) => s.season_number > 0);
     if (seasons.length === 0) return;
@@ -248,10 +294,11 @@ export default function TitleDetailPage() {
     const allWatched = seasons.every(
       (s) => s.episode_count > 0 && watchedCountForSeason(s.season_number) >= s.episode_count
     );
+    const shouldMarkWatched = forceWatched ?? !allWatched;
 
     if (!isInLibrary) await handleAdd("watching");
 
-    if (allWatched) {
+    if (!shouldMarkWatched) {
       // Single delete for the whole show instead of one per season.
       await library.unmarkShowWatched(tmdbId);
       return;
@@ -289,7 +336,16 @@ export default function TitleDetailPage() {
   }
 
   const title = details.title ?? details.name ?? "Untitled";
-  const year = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
+  const startYear = (details.release_date ?? details.first_air_date ?? "").slice(0, 4);
+  const endYear = details.last_air_date ? details.last_air_date.slice(0, 4) : null;
+  const isFinishedShow =
+    mediaType === "tv" && (details.status === "Ended" || details.status === "Canceled");
+  const yearLabel =
+    isFinishedShow && endYear && endYear !== startYear ? `${startYear} - ${endYear}` : startYear;
+
+  const movieRuntime = mediaType === "movie" ? formatRuntime(details.runtime) : null;
+  const movieLanguage = mediaType === "movie" ? languageName(details.original_language) : null;
+  const hasMetaRow = typeof details.vote_average === "number" || movieRuntime || movieLanguage;
 
   const numberedSeasons = details.seasons?.filter((s) => s.season_number > 0) ?? [];
   const allSeasonsWatched =
@@ -328,7 +384,7 @@ export default function TitleDetailPage() {
         <div className="flex flex-1 flex-col gap-3">
           <div className="flex items-start justify-between gap-3">
             <h1 className="font-display text-display-lg">
-              {title} {year && <span className="text-muted">({year})</span>}
+              {title} {yearLabel && <span className="text-muted">({yearLabel})</span>}
             </h1>
             <IconButton
               icon={Heart}
@@ -340,12 +396,33 @@ export default function TitleDetailPage() {
               className="shrink-0"
             />
           </div>
-          {typeof details.vote_average === "number" && (
-            <p className="flex items-center gap-1 text-body-sm text-ink">
-              <Star className="h-4 w-4 fill-ink" strokeWidth={0} />
-              {details.vote_average.toFixed(1)}
-            </p>
+
+          {hasMetaRow && (
+            <div className="flex flex-wrap items-center gap-3 text-body-sm text-ink">
+              {typeof details.vote_average === "number" && (
+                <span className="flex items-center gap-1">
+                  <Star className="h-4 w-4 fill-ink" strokeWidth={0} />
+                  {details.vote_average.toFixed(1)}
+                </span>
+              )}
+              {movieRuntime && (
+                <span className="flex items-center gap-1 text-muted">
+                  <Clock className="h-4 w-4" strokeWidth={2} />
+                  {movieRuntime}
+                </span>
+              )}
+              {movieLanguage && <span className="text-muted">{movieLanguage}</span>}
+            </div>
           )}
+
+          {details.genres && details.genres.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {details.genres.map((g) => (
+                <Badge key={g.id}>{g.name}</Badge>
+              ))}
+            </div>
+          )}
+
           <p className="text-body-sm text-muted">{details.overview}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -389,7 +466,7 @@ export default function TitleDetailPage() {
               label={allSeasonsWatched ? "Mark all seasons unwatched" : "Mark all seasons watched"}
               variant={allSeasonsWatched ? "filled" : "outline"}
               tone="success"
-              onClick={markAllShowWatched}
+              onClick={() => markAllShowWatched()}
             />
           </div>
           {numberedSeasons.map((season) => {
@@ -535,34 +612,57 @@ function EpisodeDetailModal({
   onToggleWatched: () => void;
   onClose: () => void;
 }) {
+  // Bottom-sheet close is animated: flip to the exit keyframes, then let
+  // onClose actually unmount once the animation has finished playing.
+  const [closing, setClosing] = useState(false);
+
+  function handleClose() {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(onClose, 250); // matches the slide-down/fade-out duration
+  }
+
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runtimeLabel = formatRuntime(episode.runtime);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/60 ${
+        closing ? "animate-fade-out" : "animate-fade-in"
+      }`}
+      onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="episode-modal-title"
     >
       <div
-        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-lg bg-surface shadow-card sm:rounded-lg"
+        className={`max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-lg bg-surface shadow-card ${
+          closing ? "animate-slide-down" : "animate-slide-up"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative aspect-video w-full shrink-0 bg-surface2">
+        {/* Drag handle — signals "this sheet can be dismissed" the way a
+            native bottom sheet does. */}
+        <div className="flex justify-center pt-3">
+          <div className="h-1 w-10 rounded-full bg-surface3" />
+        </div>
+
+        <div className="relative mt-2 aspect-video w-full shrink-0 bg-surface2">
           {episode.still_path ? (
             <Image
               src={`${TMDB_IMAGE_BASE}${episode.still_path}`}
               alt={episode.name}
               fill
-              sizes="384px"
+              sizes="512px"
               className="object-cover"
             />
           ) : (
@@ -574,7 +674,7 @@ function EpisodeDetailModal({
             {showTitle}
           </span>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="Close"
             className="focus-ring absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-base/70 text-ink backdrop-blur"
           >
@@ -601,8 +701,14 @@ function EpisodeDetailModal({
           />
         </div>
 
-        {(episode.air_date || watchedAt) && (
+        {(episode.air_date || watchedAt || runtimeLabel) && (
           <div className="flex flex-wrap items-center gap-4 px-5 pt-3 text-body-sm text-muted">
+            {runtimeLabel && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4" strokeWidth={2} />
+                {runtimeLabel}
+              </span>
+            )}
             {episode.air_date && (
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" strokeWidth={2} />

@@ -51,6 +51,30 @@ const config: Config = {
         card: "0 4px 16px rgba(0,0,0,0.5)",
         glow: "0 0 20px rgba(255,255,255,0.12)",
       },
+      keyframes: {
+        "slide-up": {
+          "0%": { transform: "translateY(100%)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        "slide-down": {
+          "0%": { transform: "translateY(0)", opacity: "1" },
+          "100%": { transform: "translateY(100%)", opacity: "0" },
+        },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        "fade-out": {
+          "0%": { opacity: "1" },
+          "100%": { opacity: "0" },
+        },
+      },
+      animation: {
+        "slide-up": "slide-up 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
+        "slide-down": "slide-down 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards",
+        "fade-in": "fade-in 0.2s ease-out",
+        "fade-out": "fade-out 0.2s ease-in forwards",
+      },
     },
   },
   plugins: [],
