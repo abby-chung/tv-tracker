@@ -73,7 +73,7 @@ export default function StatsDetailPage() {
         Back
       </button>
 
-      <h1 className="font-display text-display-lg text-ink">Stats</h1>
+      <h1 className="font-display text-display-lg">Stats</h1>
 
       <div className="flex gap-2">
         <Pill active={isShows} onClick={() => setTab("tv")}>

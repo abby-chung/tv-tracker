@@ -63,4 +63,12 @@ export interface ListItemRow {
   added_at: string;
 }
 
+/** A single cast member, normalized the same way for both TV and movie credits. */
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+}
+
 export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"; // re-exported from lib/constants — import from there for new code

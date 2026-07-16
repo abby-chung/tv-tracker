@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { TMDB_IMAGE_BASE } from "@/lib/constants";
-import type { LibraryStatus } from "@/lib/types";
+import type { CastMember, LibraryStatus, TmdbResult } from "@/lib/types";
 import { useLibraryFor } from "@/lib/LibraryContext";
 import Button from "@/components/ui/Button";
 import Pill from "@/components/ui/Pill";
@@ -26,6 +26,9 @@ import Card from "@/components/ui/Card";
 import Modal from "@/components/ui/Modal";
 import IconButton from "@/components/ui/IconButton";
 import Badge from "@/components/ui/Badge";
+import PosterCard from "@/components/PosterCard";
+import CastCard from "@/components/CastCard";
+import EpisodeRowSkeleton from "@/components/EpisodeRowSkeleton";
 
 interface Season {
   id: number;
@@ -61,6 +64,8 @@ interface Details {
   vote_average?: number;
   genres?: { id: number; name: string }[];
   original_language?: string; // ISO 639-1 code, e.g. "en"
+  credits?: { cast: CastMember[] };
+  recommendations?: { results: TmdbResult[] };
 }
 
 // STATUS_OPTIONS for TV shows and movies — "upcoming" is movie-only.
@@ -320,6 +325,15 @@ export default function TitleDetailPage() {
     await library.markEpisodesWatched(tmdbId, entries);
   }
 
+  async function handleAddRecommendation(rec: TmdbResult) {
+    await library.addToLibrary({
+      tmdb_id: rec.id,
+      title: rec.title ?? rec.name ?? "Untitled",
+      poster_path: rec.poster_path,
+      genre_ids: rec.genre_ids,
+    });
+  }
+
   if (error) {
     return (
       <Card className="border border-surface3 bg-surface2 py-8 text-center shadow-none">
@@ -353,6 +367,9 @@ export default function TitleDetailPage() {
     numberedSeasons.every(
       (s) => s.episode_count > 0 && watchedCountForSeason(s.season_number) >= s.episode_count
     );
+
+  const cast = details.credits?.cast ?? [];
+  const recommendations = (details.recommendations?.results ?? []).slice(0, 12);
 
   return (
     <div className="flex flex-col gap-6">
@@ -508,58 +525,96 @@ export default function TitleDetailPage() {
                 </div>
                 {isOpen && (
                   <ul className="divide-y divide-surface2">
-                    {(episodesBySeason[season.season_number] ?? []).map((ep) => {
-                      const watched = isEpisodeWatched(season.season_number, ep.episode_number);
-                      return (
-                        <li key={ep.id} className="flex items-center gap-3 px-4 py-3">
-                          <button
-                            onClick={() =>
-                              setSelectedEpisode({ episode: ep, seasonNumber: season.season_number })
-                            }
-                            className="focus-ring flex flex-1 items-center gap-3 overflow-hidden text-left"
-                          >
-                            <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-sm bg-surface2">
-                              {ep.still_path ? (
-                                <Image
-                                  src={`${TMDB_IMAGE_BASE}${ep.still_path}`}
-                                  alt={ep.name}
-                                  fill
-                                  sizes="96px"
-                                  className="object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full items-center justify-center text-muted">
-                                  <Clapperboard className="h-5 w-5" strokeWidth={1.5} />
-                                </div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-body-sm font-semibold uppercase tracking-wide text-ink">
-                                S{String(season.season_number).padStart(2, "0")} | E
-                                {String(ep.episode_number).padStart(2, "0")}
-                              </p>
-                              <p className="line-clamp-1 text-body-md text-ink">{ep.name}</p>
-                            </div>
-                          </button>
-                          <IconButton
-                            icon={Check}
-                            label={watched ? "Mark unwatched" : "Mark watched"}
-                            variant={watched ? "filled" : "outline"}
-                            tone="success"
-                            onClick={() => toggleEpisode(ep, season.season_number)}
-                            className="shrink-0"
-                          />
-                        </li>
-                      );
-                    })}
-                    {!episodesBySeason[season.season_number] && (
-                      <li className="px-4 py-3 text-body-sm text-muted">Loading episodes…</li>
+                    {episodesBySeason[season.season_number] ? (
+                      episodesBySeason[season.season_number].map((ep) => {
+                        const watched = isEpisodeWatched(season.season_number, ep.episode_number);
+                        return (
+                          <li key={ep.id} className="flex items-center gap-3 px-4 py-3">
+                            <button
+                              onClick={() =>
+                                setSelectedEpisode({ episode: ep, seasonNumber: season.season_number })
+                              }
+                              className="focus-ring flex flex-1 items-center gap-3 overflow-hidden text-left"
+                            >
+                              <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-sm bg-surface2">
+                                {ep.still_path ? (
+                                  <Image
+                                    src={`${TMDB_IMAGE_BASE}${ep.still_path}`}
+                                    alt={ep.name}
+                                    fill
+                                    sizes="96px"
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center text-muted">
+                                    <Clapperboard className="h-5 w-5" strokeWidth={1.5} />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-body-sm font-semibold uppercase tracking-wide text-ink">
+                                  S{String(season.season_number).padStart(2, "0")} | E
+                                  {String(ep.episode_number).padStart(2, "0")}
+                                </p>
+                                <p className="line-clamp-1 text-body-md text-ink">{ep.name}</p>
+                              </div>
+                            </button>
+                            <IconButton
+                              icon={Check}
+                              label={watched ? "Mark unwatched" : "Mark watched"}
+                              variant={watched ? "filled" : "outline"}
+                              tone="success"
+                              onClick={() => toggleEpisode(ep, season.season_number)}
+                              className="shrink-0"
+                            />
+                          </li>
+                        );
+                      })
+                    ) : (
+                      <>
+                        <EpisodeRowSkeleton />
+                        <EpisodeRowSkeleton />
+                        <EpisodeRowSkeleton />
+                      </>
                     )}
                   </ul>
                 )}
               </Card>
             );
           })}
+        </section>
+      )}
+
+      {cast.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-display-md text-ink">Cast</h2>
+          <div className="flex gap-4 overflow-x-auto scrollbar-thin pb-1">
+            {cast.map((member) => (
+              <CastCard key={member.id} member={member} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {recommendations.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-display-md text-ink">People also watched</h2>
+          <div className="flex gap-4 overflow-x-auto scrollbar-thin pb-1">
+            {recommendations.map((rec) => {
+              const already = library.items.some((i) => i.tmdb_id === rec.id);
+              const recTitle = rec.title ?? rec.name ?? "Untitled";
+              return (
+                <div key={rec.id} className="w-36 shrink-0 sm:w-40">
+                  <PosterCard
+                    title={recTitle}
+                    posterPath={rec.poster_path}
+                    onClick={() => router.push(`/title/${mediaType}/${rec.id}`)}
+                    onAdd={already ? undefined : () => handleAddRecommendation(rec)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
 

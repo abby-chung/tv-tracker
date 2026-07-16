@@ -51,9 +51,14 @@ export function trending(mediaType: "tv" | "movie" | "all" = "all") {
   return tmdbFetch(`/trending/${mediaType}/week`);
 }
 
+// TV credits work best via "aggregate_credits" (combines cast across every
+// episode/season into one ranked list); movies use the plain "credits"
+// endpoint. Both are normalized into the same shape by the API route.
 export function getDetails(mediaType: "tv" | "movie", id: string) {
+  const parts = [mediaType === "tv" ? "aggregate_credits" : "credits", "recommendations"];
+  if (mediaType === "tv") parts.push("seasons");
   return tmdbFetch(`/${mediaType}/${id}`, {
-    append_to_response: mediaType === "tv" ? "seasons" : "",
+    append_to_response: parts.join(","),
   });
 }
 

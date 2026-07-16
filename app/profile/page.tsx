@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogOut, ChevronRight, Tv, Film, ListVideo, Clapperboard } from "lucide-react";
@@ -12,9 +12,12 @@ import Pill from "@/components/ui/Pill";
 import Card from "@/components/ui/Card";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
+import EditProfileSheet from "@/components/EditProfileSheet";
 import { TimeStatCard, CountStatCard, breakdownTime } from "@/components/StatCards";
 import { useLibraryContext, useListsContext } from "@/lib/LibraryContext";
+import { useProfile } from "@/lib/useProfile";
 import { createClient } from "@/lib/supabase/client";
+import { ANIMATION_GENRE_ID } from "@/lib/constants";
 import type { LibraryItem, LibraryStatus } from "@/lib/types";
 
 const SHOW_FILTERS: { key: LibraryStatus | "all"; label: string }[] = [
@@ -31,13 +34,18 @@ const MOVIE_FILTERS: { key: LibraryStatus | "all"; label: string }[] = [
   { key: "watched", label: "Watched" },
 ];
 
+function isAnimation(item: LibraryItem): boolean {
+  return (item.genre_ids ?? []).includes(ANIMATION_GENRE_ID);
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { tv, movie } = useLibraryContext();
   const { lists, itemsFor, createList } = useListsContext();
-  const [email, setEmail] = useState<string | null>(null);
+  const { profile, updateProfile } = useProfile();
   const [showFilter, setShowFilter] = useState<LibraryStatus | "all">("all");
   const [movieFilter, setMovieFilter] = useState<LibraryStatus | "all">("all");
+  const [editOpen, setEditOpen] = useState(false);
 
   // Modal state: remove confirmation
   const [removeTarget, setRemoveTarget] = useState<{
@@ -52,10 +60,6 @@ export default function ProfilePage() {
 
   const supabase = useMemo(() => createClient(), []);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-  }, [supabase]);
-
   const tvMinutes = useMemo(
     () => tv.watched.reduce((sum, w) => sum + (w.runtime_minutes || 0), 0),
     [tv.watched]
@@ -65,16 +69,24 @@ export default function ProfilePage() {
     [movie.watched]
   );
 
+  // Animated titles get pulled into their own section below, so the main
+  // Shows/Movies (and their Favorites) only ever show non-animated titles.
+  const nonAnimationShows = useMemo(() => tv.items.filter((i) => !isAnimation(i)), [tv.items]);
+  const nonAnimationMovies = useMemo(() => movie.items.filter((i) => !isAnimation(i)), [movie.items]);
+
+  const animationShows = useMemo(() => tv.items.filter(isAnimation), [tv.items]);
+  const animationMovies = useMemo(() => movie.items.filter(isAnimation), [movie.items]);
+
   const filteredShows = useMemo(
-    () => (showFilter === "all" ? tv.items : tv.items.filter((i) => i.status === showFilter)),
-    [tv.items, showFilter]
+    () => (showFilter === "all" ? nonAnimationShows : nonAnimationShows.filter((i) => i.status === showFilter)),
+    [nonAnimationShows, showFilter]
   );
   const filteredMovies = useMemo(
-    () => (movieFilter === "all" ? movie.items : movie.items.filter((i) => i.status === movieFilter)),
-    [movie.items, movieFilter]
+    () => (movieFilter === "all" ? nonAnimationMovies : nonAnimationMovies.filter((i) => i.status === movieFilter)),
+    [nonAnimationMovies, movieFilter]
   );
-  const favoriteShows = useMemo(() => tv.items.filter((i) => i.is_favorite), [tv.items]);
-  const favoriteMovies = useMemo(() => movie.items.filter((i) => i.is_favorite), [movie.items]);
+  const favoriteShows = useMemo(() => nonAnimationShows.filter((i) => i.is_favorite), [nonAnimationShows]);
+  const favoriteMovies = useMemo(() => nonAnimationMovies.filter((i) => i.is_favorite), [nonAnimationMovies]);
 
   function showProgressFor(item: LibraryItem): number {
     // Explicitly marked watched → always full green bar.
@@ -131,10 +143,15 @@ export default function ProfilePage() {
     <div className="flex flex-col gap-10">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Avatar label={email ?? undefined} size="lg" />
+          <Avatar label={profile.displayName ?? profile.email ?? undefined} imageSrc={profile.avatarUrl} size="lg" />
           <div>
-            <h1 className="font-display text-display-lg">Profile</h1>
-            {email && <p className="mt-1 text-body-sm text-muted">{email}</p>}
+            <h1 className="font-display text-display-lg">{profile.displayName || "Profile"}</h1>
+            <button
+              onClick={() => setEditOpen(true)}
+              className="focus-ring mt-1.5 rounded-full border border-surface2 px-3 py-1 text-caption uppercase text-muted transition-colors hover:border-ink hover:text-ink"
+            >
+              Edit
+            </button>
           </div>
         </div>
         <Button variant="ghost" size="sm" icon={LogOut} onClick={handleSignOut}>
@@ -220,6 +237,34 @@ export default function ProfilePage() {
             />
           )}
 
+          {animationShows.length > 0 && (
+            <>
+              <SectionDivider />
+              <PosterSection
+                title="Animation Shows"
+                items={animationShows}
+                getProgress={(item) => showProgressFor(item)}
+                onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
+                onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
+                onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
+              />
+            </>
+          )}
+
+          {animationMovies.length > 0 && (
+            <>
+              <SectionDivider />
+              <PosterSection
+                title="Animation Movies"
+                items={animationMovies}
+                getProgress={(item) => (isMovieWatched(item.tmdb_id) ? 1 : 0)}
+                onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
+                onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
+                onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
+              />
+            </>
+          )}
+
           <SectionDivider />
 
           {/* Lists */}
@@ -279,13 +324,24 @@ export default function ProfilePage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Edit profile bottom sheet */}
+      <EditProfileSheet
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        displayName={profile.displayName ?? ""}
+        avatarUrl={profile.avatarUrl}
+        onSave={async ({ displayName, avatarUrl }) => {
+          await updateProfile({ displayName, avatarUrl });
+        }}
+      />
     </div>
   );
 }
 
-/** A simple hairline used to visually separate Shows / Movies / Lists on the profile page. */
+/** A hairline used to visually separate Shows / Movies / Animation / Lists on the profile page. */
 function SectionDivider() {
-  return <div className="border-t border-surface2" aria-hidden="true" />;
+  return <div className="border-t-2 border-surface3" aria-hidden="true" />;
 }
 
 function PosterSection({
