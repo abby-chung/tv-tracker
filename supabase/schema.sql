@@ -97,3 +97,31 @@ create policy "Users manage their own list items"
 
 create index if not exists idx_lists_user on lists(user_id);
 create index if not exists idx_list_items_list on list_items(list_id);
+
+-- ─── Profile (display name + avatar) ──────────────────────────────────────────
+-- IMPORTANT: this data must NOT live in auth.users.raw_user_meta_data —
+-- Supabase embeds user_metadata directly inside the session JWT, which is
+-- sent as a cookie on every request. An avatar photo there quickly exceeds
+-- browser/Node HTTP header size limits and breaks the app with a
+-- "431 Request Header Fields Too Large" error. A normal table has no such
+-- limit and is only fetched when needed.
+
+create table if not exists profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  avatar_url text,
+  updated_at timestamptz not null default now()
+);
+
+alter table profiles enable row level security;
+
+create policy "Users manage their own profile"
+  on profiles for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- If you already tried the profile-picture feature before this fix, run this
+-- once to remove the oversized data that got stuck in your session cookie:
+-- update auth.users
+-- set raw_user_meta_data = raw_user_meta_data - 'avatar_url' - 'display_name'
+-- where raw_user_meta_data ? 'avatar_url';
