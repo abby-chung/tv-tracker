@@ -17,26 +17,11 @@ import { TimeStatCard, CountStatCard, breakdownTime } from "@/components/StatCar
 import { useLibraryContext, useListsContext } from "@/lib/LibraryContext";
 import { useProfile } from "@/lib/useProfile";
 import { createClient } from "@/lib/supabase/client";
-import { ANIMATION_GENRE_ID } from "@/lib/constants";
+import { SHOW_FILTERS, MOVIE_FILTERS, isAnimation, showProgressFor } from "@/lib/libraryHelpers";
 import type { LibraryItem, LibraryStatus } from "@/lib/types";
 
-const SHOW_FILTERS: { key: LibraryStatus | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "watching", label: "Watching" },
-  { key: "watchlist", label: "Watchlist" },
-  { key: "watched", label: "Watched" },
-];
-
-const MOVIE_FILTERS: { key: LibraryStatus | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "upcoming", label: "Upcoming" },
-  { key: "watchlist", label: "Watchlist" },
-  { key: "watched", label: "Watched" },
-];
-
-function isAnimation(item: LibraryItem): boolean {
-  return (item.genre_ids ?? []).includes(ANIMATION_GENRE_ID);
-}
+/** Each poster section on Profile shows at most this many titles; the arrow opens the full list. */
+const SECTION_DISPLAY_LIMIT = 9;
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -87,20 +72,6 @@ export default function ProfilePage() {
   );
   const favoriteShows = useMemo(() => nonAnimationShows.filter((i) => i.is_favorite), [nonAnimationShows]);
   const favoriteMovies = useMemo(() => nonAnimationMovies.filter((i) => i.is_favorite), [nonAnimationMovies]);
-
-  function showProgressFor(item: LibraryItem): number {
-    // Explicitly marked watched → always full green bar.
-    if (item.status === "watched") return 1;
-    const watchedCount = tv.watched.filter((w) => w.tmdb_id === item.tmdb_id).length;
-    if (watchedCount === 0) return 0;
-    // Use the stored total episode count for an accurate fraction when available.
-    if (item.total_episodes && item.total_episodes > 0) {
-      return Math.min(0.99, watchedCount / item.total_episodes);
-    }
-    // Fallback for older items added before total_episodes was stored: cap at
-    // 0.99 so the bar stays yellow (in-progress) regardless of episode count.
-    return Math.min(0.99, watchedCount / Math.max(watchedCount + 1, 10));
-  }
 
   function isMovieWatched(tmdbId: number) {
     return movie.watched.some((w) => w.tmdb_id === tmdbId);
@@ -194,20 +165,22 @@ export default function ProfilePage() {
             activeFilter={showFilter}
             onFilterChange={setShowFilter}
             items={filteredShows}
-            getProgress={(item) => showProgressFor(item)}
+            getProgress={(item) => showProgressFor(item, tv.watched)}
             onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
             onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
             onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
+            viewAllHref="/profile/section/shows"
           />
 
           {favoriteShows.length > 0 && (
             <PosterSection
               title="Favorite Shows"
               items={favoriteShows}
-              getProgress={(item) => showProgressFor(item)}
+              getProgress={(item) => showProgressFor(item, tv.watched)}
               onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
               onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
               onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
+              viewAllHref="/profile/section/favorite-shows"
             />
           )}
 
@@ -224,6 +197,7 @@ export default function ProfilePage() {
             onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
             onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
             onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
+            viewAllHref="/profile/section/movies"
           />
 
           {favoriteMovies.length > 0 && (
@@ -234,6 +208,7 @@ export default function ProfilePage() {
               onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
               onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
               onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
+              viewAllHref="/profile/section/favorite-movies"
             />
           )}
 
@@ -243,10 +218,11 @@ export default function ProfilePage() {
               <PosterSection
                 title="Animation Shows"
                 items={animationShows}
-                getProgress={(item) => showProgressFor(item)}
+                getProgress={(item) => showProgressFor(item, tv.watched)}
                 onView={(item) => router.push(`/title/tv/${item.tmdb_id}`)}
                 onRemove={(item) => handleRemove("tv", item.tmdb_id, item.title)}
                 onToggleFavorite={(item) => handleToggleFavorite("tv", item)}
+                viewAllHref="/profile/section/animation-shows"
               />
             </>
           )}
@@ -261,6 +237,7 @@ export default function ProfilePage() {
                 onView={(item) => router.push(`/title/movie/${item.tmdb_id}`)}
                 onRemove={(item) => handleRemove("movie", item.tmdb_id, item.title)}
                 onToggleFavorite={(item) => handleToggleFavorite("movie", item)}
+                viewAllHref="/profile/section/animation-movies"
               />
             </>
           )}
@@ -355,6 +332,7 @@ function PosterSection({
   onView,
   onRemove,
   onToggleFavorite,
+  viewAllHref,
 }: {
   title: string;
   emptyMessage?: string;
@@ -366,7 +344,11 @@ function PosterSection({
   onView: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
   onToggleFavorite: (item: LibraryItem) => void;
+  viewAllHref?: string;
 }) {
+  const visibleItems = items.slice(0, SECTION_DISPLAY_LIMIT);
+  const hasMore = items.length > SECTION_DISPLAY_LIMIT;
+
   return (
     <section>
       <h2 className="mb-3 font-display text-display-md text-ink">{title}</h2>
@@ -393,21 +375,34 @@ function PosterSection({
           </Card>
         ) : null
       ) : (
-        <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
-          {items.map((item) => (
-            <PosterCard
-              key={item.id}
-              title={item.title}
-              posterPath={item.poster_path}
-              progress={getProgress(item)}
-              subtitle={item.status}
-              favorite={item.is_favorite}
-              onClick={() => onView(item)}
-              onRemove={() => onRemove(item)}
-              onToggleFavorite={() => onToggleFavorite(item)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
+            {visibleItems.map((item) => (
+              <PosterCard
+                key={item.id}
+                title={item.title}
+                posterPath={item.poster_path}
+                progress={getProgress(item)}
+                subtitle={item.status}
+                favorite={item.is_favorite}
+                onClick={() => onView(item)}
+                onRemove={() => onRemove(item)}
+                onToggleFavorite={() => onToggleFavorite(item)}
+              />
+            ))}
+          </div>
+
+          {hasMore && viewAllHref && (
+            <Link
+              href={viewAllHref}
+              className="focus-ring mt-4 flex items-center justify-center gap-1.5 rounded-md border border-surface2 py-2.5
+                text-body-sm text-muted transition-colors hover:border-ink hover:text-ink"
+            >
+              View all {items.length}
+              <ChevronRight className="h-4 w-4" strokeWidth={2} />
+            </Link>
+          )}
+        </>
       )}
     </section>
   );
